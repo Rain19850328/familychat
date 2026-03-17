@@ -2,10 +2,186 @@
 <html lang="ko">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>안녕하세요.</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+  <meta name="theme-color" content="#f36b4f">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="default">
+  <meta name="apple-mobile-web-app-title" content="FamilyChat">
+  <meta name="description" content="초대 기반으로만 연결되는 폐쇄형 가족 채팅 PWA">
+  <title>우리 가족 채팅</title>
+  <link rel="manifest" href="manifest.webmanifest">
+  <link rel="icon" href="icons/icon-192.svg" type="image/svg+xml">
+  <link rel="apple-touch-icon" href="icons/icon-192.svg">
+  <link rel="stylesheet" href="styles.css">
 </head>
 <body>
-  <h1>안녕</h1>
+  <div class="app-shell">
+    <section class="view onboarding-view" id="onboardingView">
+      <div class="hero-card">
+        <p class="eyebrow">Closed Family Chat PWA</p>
+        <h1>가족끼리만 연결되는 채팅</h1>
+        <p class="hero-copy">
+          친구 검색, 전화번호 기반 자유 연결 없이 관리자 초대 코드로만 입장합니다.
+          가족 전체방과 가족 내부 1:1만 허용하는 모바일 중심 MVP입니다.
+        </p>
+        <div class="hero-points">
+          <span>초대 기반 가입</span>
+          <span>가족 외 연결 차단</span>
+          <span>설치 가능한 PWA</span>
+        </div>
+      </div>
+
+      <div class="onboarding-grid">
+        <article class="panel" id="savedProfilesPanel">
+          <div class="panel-head">
+            <div>
+              <p class="eyebrow">This Device</p>
+              <h2>저장된 프로필</h2>
+            </div>
+          </div>
+          <div class="saved-profiles" id="savedProfilesList"></div>
+        </article>
+
+        <article class="panel">
+          <div class="panel-head">
+            <div>
+              <p class="eyebrow">Admin Only</p>
+              <h2>가족 만들기</h2>
+            </div>
+          </div>
+          <form id="createFamilyForm" class="stack-form">
+            <label>
+              가족 이름
+              <input id="familyNameInput" name="familyName" type="text" maxlength="30" placeholder="예: 김가네" required>
+            </label>
+            <label>
+              관리자 이름
+              <input id="adminNameInput" name="adminName" type="text" maxlength="20" placeholder="예: 엄마" required>
+            </label>
+            <button class="primary-button" type="submit">가족 그룹 생성</button>
+          </form>
+        </article>
+
+        <article class="panel">
+          <div class="panel-head">
+            <div>
+              <p class="eyebrow">Invite Only</p>
+              <h2>초대로 참여하기</h2>
+            </div>
+          </div>
+          <form id="joinFamilyForm" class="stack-form">
+            <label>
+              초대 코드
+              <input id="inviteCodeInput" name="inviteCode" type="text" maxlength="12" placeholder="예: FAM-AB12CD" required>
+            </label>
+            <label>
+              내 이름
+              <input id="memberNameInput" name="memberName" type="text" maxlength="20" placeholder="예: 딸" required>
+            </label>
+            <button class="secondary-button" type="submit">가족 그룹 입장</button>
+          </form>
+        </article>
+      </div>
+    </section>
+
+    <section class="view app-view hidden" id="appView">
+      <aside class="drawer" id="drawer">
+        <div class="drawer-header">
+          <div>
+            <p class="eyebrow">Family Space</p>
+            <h2 id="familyNameLabel">우리 가족</h2>
+          </div>
+          <button class="icon-button" id="closeDrawerButton" type="button" aria-label="메뉴 닫기">×</button>
+        </div>
+
+        <section class="drawer-section">
+          <div class="family-card">
+            <div>
+              <p class="family-role" id="currentRoleLabel">관리자</p>
+              <h3 id="currentMemberLabel">이름</h3>
+              <p class="family-presence" id="familyPresenceLabel"></p>
+            </div>
+            <button class="ghost-button" id="installButton" type="button">앱 설치</button>
+          </div>
+        </section>
+
+        <section class="drawer-section">
+          <div class="section-title-row">
+            <h3>채팅방</h3>
+          </div>
+          <div class="room-list" id="roomList"></div>
+        </section>
+
+        <section class="drawer-section">
+          <div class="section-title-row">
+            <h3>가족 구성원</h3>
+          </div>
+          <div class="member-list" id="memberList"></div>
+        </section>
+
+        <section class="drawer-section hidden" id="inviteSection">
+          <div class="section-title-row">
+            <h3>초대 코드</h3>
+            <button class="primary-button compact" id="createInviteButton" type="button">코드 생성</button>
+          </div>
+          <div class="invite-list" id="inviteList"></div>
+        </section>
+
+        <section class="drawer-section">
+          <div class="section-title-row">
+            <h3>이 기기 프로필</h3>
+          </div>
+          <div class="saved-profiles app-profiles" id="appProfileList"></div>
+        </section>
+
+        <section class="drawer-section">
+          <div class="section-title-row">
+            <h3>설정</h3>
+          </div>
+          <div class="settings-stack">
+            <button class="secondary-button" id="notificationButton" type="button">알림 권한 요청</button>
+            <button class="ghost-button" id="logoutButton" type="button">로그아웃</button>
+          </div>
+        </section>
+      </aside>
+
+      <button class="scrim hidden" id="drawerScrim" type="button" aria-label="메뉴 닫기"></button>
+
+      <main class="chat-layout">
+        <header class="topbar">
+          <button class="icon-button" id="openDrawerButton" type="button" aria-label="메뉴 열기">☰</button>
+          <div class="topbar-copy">
+            <p class="eyebrow" id="roomTypeLabel">가족 전체방</p>
+            <h2 id="roomTitleLabel">우리 가족방</h2>
+          </div>
+          <button class="ghost-button compact" id="muteToggleButton" type="button">알림 켜짐</button>
+        </header>
+
+        <div class="banner hidden" id="offlineBanner">
+          오프라인 상태입니다. 앱 셸은 유지되며, 실제 다중 기기 동기화는 서버 연동 후 활성화됩니다.
+        </div>
+
+        <section class="chat-meta" id="chatMeta"></section>
+        <section class="message-list" id="messageList"></section>
+
+        <form class="composer" id="composerForm">
+          <label class="attach-button" for="imageInput">사진</label>
+          <input id="imageInput" type="file" accept="image/*" hidden>
+          <div class="composer-main">
+            <div class="image-preview hidden" id="imagePreviewWrap">
+              <img id="imagePreview" alt="선택한 이미지 미리보기">
+              <button class="image-remove" id="removeImageButton" type="button" aria-label="이미지 제거">×</button>
+            </div>
+            <textarea id="messageInput" rows="1" maxlength="1000" placeholder="가족에게 보낼 메시지를 입력하세요"></textarea>
+          </div>
+          <button class="primary-button send-button" type="submit">전송</button>
+        </form>
+      </main>
+    </section>
+  </div>
+
+  <div class="toast hidden" id="toast"></div>
+
+  <script type="module" src="app.js"></script>
 </body>
 </html>
