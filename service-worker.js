@@ -1,4 +1,4 @@
-const CACHE_NAME = "familychat-shell-v2";
+const CACHE_NAME = "familychat-shell-v3";
 const APP_SHELL = [
   "./",
   "./index.html",
@@ -9,6 +9,7 @@ const APP_SHELL = [
   "./icons/icon-192.svg",
   "./icons/icon-512.svg",
 ];
+const CONFIG_PATH = "/supabase.config.js";
 
 self.addEventListener("install", (event) => {
   event.waitUntil(caches.open(CACHE_NAME).then((cache) => cache.addAll(APP_SHELL)));
@@ -26,6 +27,20 @@ self.addEventListener("activate", (event) => {
 
 self.addEventListener("fetch", (event) => {
   if (event.request.method !== "GET") {
+    return;
+  }
+
+  const requestUrl = new URL(event.request.url);
+  if (requestUrl.pathname.endsWith(CONFIG_PATH)) {
+    event.respondWith(
+      fetch(event.request, { cache: "no-store" })
+        .then((response) => {
+          const copy = response.clone();
+          caches.open(CACHE_NAME).then((cache) => cache.put("./supabase.config.js", copy));
+          return response;
+        })
+        .catch(() => caches.match("./supabase.config.js")),
+    );
     return;
   }
 
