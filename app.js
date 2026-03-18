@@ -1,6 +1,9 @@
-const STORAGE_KEY = "familychat.closed.pwa.v1";
+import { createClient } from "https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/+esm";
+
+const STORAGE_KEY = "familychat.closed.pwa.v2";
 const CHANNEL_KEY = "familychat.closed.pwa.channel";
 const MAX_IMAGE_SIZE = 2 * 1024 * 1024;
+const REALTIME_TABLES = ["families", "members", "rooms", "room_members", "invites", "messages", "message_reads"];
 
 const elements = {
   onboardingView: document.getElementById("onboardingView"),
@@ -46,25 +49,47 @@ const elements = {
 };
 
 const syncChannel = "BroadcastChannel" in window ? new BroadcastChannel(CHANNEL_KEY) : null;
+const supabaseConfig = window.__SUPABASE_CONFIG__ ?? {};
+const hasSupabaseConfig = isSupabaseConfigured(supabaseConfig);
+const supabase = hasSupabaseConfig
+  ? createClient(supabaseConfig.url, supabaseConfig.anonKey, {
+    auth: {
+      autoRefreshToken: false,
+      persistSession: false,
+      detectSessionInUrl: false,
+    },
+  })
+  : null;
 
 let state = loadState();
 let pendingImage = null;
 let deferredInstallPrompt = null;
 let toastTimer = null;
+let familyChannel = null;
+let subscribedFamilyId = null;
+let refreshPromise = null;
 
 bootstrap();
 
-function bootstrap() {
+async function bootstrap() {
   normalizeState();
-  ensureCurrentSession();
   registerEvents();
   registerServiceWorker();
+
+  if (!hasSupabaseConfig) {
+    render();
+    showToast("supabase.config.js에 Supabase URL과 anon key를 입력하세요.");
+    return;
+  }
+
+  await refreshCurrentFamily({ skipToast: true });
   render();
+  void markActiveRoomRead({ silent: true });
 }
 
 function createEmptyState() {
   return {
-    version: 1,
+    version: 2,
     families: [],
     deviceProfiles: [],
     currentSession: null,
@@ -80,7 +105,14 @@ function loadState() {
     if (!raw) {
       return createEmptyState();
     }
-    return { ...createEmptyState(), ...JSON.parse(raw) };
+
+    const parsed = JSON.parse(raw);
+    return {
+      ...createEmptyState(),
+      deviceProfiles: Array.isArray(parsed.deviceProfiles) ? parsed.deviceProfiles : [],
+      currentSession: parsed.currentSession && typeof parsed.currentSession === "object" ? parsed.currentSession : null,
+      meta: parsed.meta && typeof parsed.meta === "object" ? parsed.meta : { lastUpdatedAt: Date.now() },
+    };
   } catch (error) {
     console.error("State load failed", error);
     return createEmptyState();
@@ -91,49 +123,303 @@ function normalizeState() {
   state.families = Array.isArray(state.families) ? state.families : [];
   state.deviceProfiles = Array.isArray(state.deviceProfiles) ? state.deviceProfiles : [];
 
-  state.families.forEach((family) => {
-    family.members = Array.isArray(family.members) ? family.members : [];
-    family.rooms = Array.isArray(family.rooms) ? family.rooms : [];
-    family.invites = Array.isArray(family.invites) ? family.invites : [];
-    family.messages = Array.isArray(family.messages) ? family.messages : [];
-    family.settings = family.settings || { allowGroupRooms: false };
+  state.deviceProfiles = state.deviceProfiles.map((profile) => ({
+    familyId: profile.familyId,
+    memberId: profile.memberId,
+    familyName: profile.familyName ?? "가족",
+    memberName: profile.memberName ?? "사용자",
+    role: profile.role ?? "member",
+    savedAt: profile.savedAt ?? new Date().toISOString(),
+  })).filter((profile) => profile.familyId && profile.memberId);
+
+  state.families.forEach(normalizeFamily);
+}
+
+function normalizeFamily(family) {
+  family.members = Array.isArray(family.members) ? family.members : [];
+  family.rooms = Array.isArray(family.rooms) ? family.rooms : [];
+  family.invites = Array.isArray(family.invites) ? family.invites : [];
+  family.messages = Array.isArray(family.messages) ? family.messages : [];
+  family.settings = family.settings || { allowGroupRooms: false };
+
+  family.rooms.forEach((room) => {
+    room.memberIds = Array.isArray(room.memberIds) ? room.memberIds : [];
+    room.mutedBy = room.mutedBy && typeof room.mutedBy === "object" ? room.mutedBy : {};
+  });
+
+  family.messages.forEach((message) => {
+    message.readBy = message.readBy && typeof message.readBy === "object" ? message.readBy : {};
   });
 }
 
 function saveState({ broadcast = true } = {}) {
   state.meta.lastUpdatedAt = Date.now();
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+  const snapshot = {
+    version: 2,
+    deviceProfiles: state.deviceProfiles,
+    currentSession: state.currentSession,
+    meta: state.meta,
+  };
+  localStorage.setItem(STORAGE_KEY, JSON.stringify(snapshot));
+
   if (broadcast && syncChannel) {
     syncChannel.postMessage({ type: "sync", at: state.meta.lastUpdatedAt });
   }
 }
 
-function syncState() {
+function broadcastRefresh() {
+  if (syncChannel) {
+    syncChannel.postMessage({ type: "refresh", at: Date.now() });
+  }
+}
+
+async function syncState() {
   const previousState = structuredClone(state);
-  state = loadState();
-  normalizeState();
-  ensureCurrentSession();
-  maybeNotify(previousState, state);
+  const localState = loadState();
+
+  state.deviceProfiles = localState.deviceProfiles;
+  state.currentSession = localState.currentSession;
+  state.meta = localState.meta;
+
+  await refreshCurrentFamily({
+    previousState,
+    notify: true,
+    persist: false,
+    skipToast: true,
+  });
   render();
 }
 
-function ensureCurrentSession() {
-  if (!state.currentSession) {
+async function refreshCurrentFamily({
+  previousState = null,
+  notify = false,
+  persist = true,
+  skipToast = false,
+} = {}) {
+  if (!supabase || !state.currentSession) {
+    state.families = [];
+    unsubscribeFamilyChanges();
+    if (persist) {
+      saveState({ broadcast: false });
+    }
+    return null;
+  }
+
+  if (refreshPromise) {
+    return refreshPromise;
+  }
+
+  const priorState = previousState ?? structuredClone(state);
+  const sessionAtStart = { ...state.currentSession };
+
+  refreshPromise = (async () => {
+    try {
+      const family = await fetchFamilySnapshot(sessionAtStart.familyId);
+
+      if (!state.currentSession
+        || state.currentSession.familyId !== sessionAtStart.familyId
+        || state.currentSession.memberId !== sessionAtStart.memberId) {
+        return null;
+      }
+
+      if (!family) {
+        state.families = [];
+        state.currentSession = null;
+        removeDeviceProfile(sessionAtStart.familyId, sessionAtStart.memberId);
+        unsubscribeFamilyChanges();
+        if (persist) {
+          saveState();
+        }
+        if (!skipToast) {
+          showToast("가족 세션을 찾을 수 없습니다.");
+        }
+        return null;
+      }
+
+      normalizeFamily(family);
+      state.families = [family];
+
+      const member = findMember(family, sessionAtStart.memberId);
+      if (!member) {
+        state.currentSession = null;
+        removeDeviceProfile(sessionAtStart.familyId, sessionAtStart.memberId);
+        unsubscribeFamilyChanges();
+        if (persist) {
+          saveState();
+        }
+        if (!skipToast) {
+          showToast("저장된 프로필을 더 이상 사용할 수 없습니다.");
+        }
+        return null;
+      }
+
+      const rooms = getRoomsForMember(family, member.id);
+      state.currentSession.activeRoomId = rooms.find((room) => room.id === sessionAtStart.activeRoomId)?.id ?? rooms[0]?.id ?? null;
+
+      upsertDeviceProfile({
+        familyId: family.id,
+        memberId: member.id,
+        familyName: family.name,
+        memberName: member.name,
+        role: member.role,
+      });
+
+      subscribeToFamilyChanges(family.id);
+
+      if (persist) {
+        saveState({ broadcast: false });
+      }
+
+      if (notify) {
+        maybeNotify(priorState, state);
+      }
+
+      return family;
+    } catch (error) {
+      console.error("Supabase sync failed", error);
+      if (!skipToast) {
+        showToast(extractErrorMessage(error, "Supabase 동기화에 실패했습니다."));
+      }
+      return null;
+    } finally {
+      refreshPromise = null;
+    }
+  })();
+
+  return refreshPromise;
+}
+
+function subscribeToFamilyChanges(familyId) {
+  if (!supabase || subscribedFamilyId === familyId) {
     return;
   }
 
-  const family = findFamily(state.currentSession.familyId);
-  const member = family ? findMember(family, state.currentSession.memberId) : null;
+  unsubscribeFamilyChanges();
 
-  if (!family || !member) {
-    state.currentSession = null;
-    return;
+  let channel = supabase.channel(`family-sync:${familyId}`);
+  channel = channel.on("postgres_changes", {
+    event: "*",
+    schema: "public",
+    table: "families",
+    filter: `id=eq.${familyId}`,
+  }, () => {
+    void scheduleFamilyRefresh();
+  });
+
+  REALTIME_TABLES
+    .filter((table) => table !== "families")
+    .forEach((table) => {
+      channel = channel.on("postgres_changes", {
+        event: "*",
+        schema: "public",
+        table,
+        filter: `family_id=eq.${familyId}`,
+      }, () => {
+        void scheduleFamilyRefresh();
+      });
+    });
+
+  familyChannel = channel.subscribe((status) => {
+    if (status === "CHANNEL_ERROR") {
+      console.error("Realtime subscription failed");
+    }
+  });
+  subscribedFamilyId = familyId;
+}
+
+function unsubscribeFamilyChanges() {
+  if (supabase && familyChannel) {
+    supabase.removeChannel(familyChannel);
   }
 
-  touchMember(family.id, member.id);
-  const rooms = getRoomsForMember(family, member.id);
-  state.currentSession.activeRoomId = rooms.find((room) => room.id === state.currentSession.activeRoomId)?.id ?? rooms[0]?.id ?? null;
-  saveState({ broadcast: false });
+  familyChannel = null;
+  subscribedFamilyId = null;
+}
+
+async function scheduleFamilyRefresh() {
+  const previousState = structuredClone(state);
+  await refreshCurrentFamily({
+    previousState,
+    notify: true,
+    persist: false,
+    skipToast: true,
+  });
+  render();
+}
+
+async function rpc(name, params = {}) {
+  const { data, error } = await supabase.rpc(name, params);
+  if (error) {
+    throw error;
+  }
+  return data;
+}
+
+async function fetchFamilySnapshot(familyId) {
+  return rpc("app_get_family_snapshot", {
+    p_family_id: familyId,
+  });
+}
+
+async function createFamilyRemote(familyName, adminName) {
+  return rpc("app_create_family", {
+    p_family_name: familyName,
+    p_admin_name: adminName,
+  });
+}
+
+async function joinFamilyRemote(inviteCode, memberName) {
+  return rpc("app_join_family", {
+    p_invite_code: inviteCode,
+    p_member_name: memberName,
+  });
+}
+
+async function createInviteRemote(familyId, memberId) {
+  return rpc("app_create_invite", {
+    p_family_id: familyId,
+    p_admin_member_id: memberId,
+  });
+}
+
+async function getOrCreateDmRoomRemote(familyId, memberId, targetId) {
+  return rpc("app_get_or_create_dm_room", {
+    p_family_id: familyId,
+    p_first_member_id: memberId,
+    p_second_member_id: targetId,
+  });
+}
+
+async function sendMessageRemote(familyId, roomId, senderId, messageType, text, imageDataUrl) {
+  return rpc("app_send_message", {
+    p_family_id: familyId,
+    p_room_id: roomId,
+    p_sender_id: senderId,
+    p_message_type: messageType,
+    p_text: text,
+    p_image_data_url: imageDataUrl,
+  });
+}
+
+async function markRoomReadRemote(roomId, memberId) {
+  return rpc("app_mark_room_read", {
+    p_room_id: roomId,
+    p_member_id: memberId,
+  });
+}
+
+async function setRoomMuteRemote(roomId, memberId, muted) {
+  return rpc("app_set_room_mute", {
+    p_room_id: roomId,
+    p_member_id: memberId,
+    p_muted: muted,
+  });
+}
+
+async function touchMemberRemote(memberId) {
+  return rpc("app_touch_member", {
+    p_member_id: memberId,
+  });
 }
 
 function findFamily(familyId) {
@@ -178,6 +464,7 @@ function getRoomsForMember(family, memberId) {
       if (right.type === "family" && left.type !== "family") {
         return 1;
       }
+
       const leftAt = getMessagesForRoom(family, left.id).at(-1)?.createdAt ?? left.createdAt;
       const rightAt = getMessagesForRoom(family, right.id).at(-1)?.createdAt ?? right.createdAt;
       return rightAt.localeCompare(leftAt);
@@ -243,34 +530,56 @@ function getRoomPreview(family, room) {
 }
 
 function registerEvents() {
-  elements.createFamilyForm.addEventListener("submit", handleCreateFamily);
-  elements.joinFamilyForm.addEventListener("submit", handleJoinFamily);
-  elements.roomList.addEventListener("click", handleRoomClick);
-  elements.memberList.addEventListener("click", handleMemberClick);
-  elements.savedProfilesList.addEventListener("click", handleProfileClick);
-  elements.appProfileList.addEventListener("click", handleProfileClick);
+  elements.createFamilyForm.addEventListener("submit", (event) => {
+    void handleCreateFamily(event);
+  });
+  elements.joinFamilyForm.addEventListener("submit", (event) => {
+    void handleJoinFamily(event);
+  });
+  elements.roomList.addEventListener("click", (event) => {
+    void handleRoomClick(event);
+  });
+  elements.memberList.addEventListener("click", (event) => {
+    void handleMemberClick(event);
+  });
+  elements.savedProfilesList.addEventListener("click", (event) => {
+    void handleProfileClick(event);
+  });
+  elements.appProfileList.addEventListener("click", (event) => {
+    void handleProfileClick(event);
+  });
   elements.inviteList.addEventListener("click", handleInviteClick);
-  elements.createInviteButton.addEventListener("click", handleCreateInvite);
-  elements.composerForm.addEventListener("submit", handleSendMessage);
+  elements.createInviteButton.addEventListener("click", () => {
+    void handleCreateInvite();
+  });
+  elements.composerForm.addEventListener("submit", (event) => {
+    void handleSendMessage(event);
+  });
   elements.imageInput.addEventListener("change", handleImageSelection);
   elements.removeImageButton.addEventListener("click", clearPendingImage);
   elements.openDrawerButton.addEventListener("click", () => setDrawer(true));
   elements.closeDrawerButton.addEventListener("click", () => setDrawer(false));
   elements.drawerScrim.addEventListener("click", () => setDrawer(false));
   elements.logoutButton.addEventListener("click", handleLogout);
-  elements.muteToggleButton.addEventListener("click", toggleMuteRoom);
+  elements.muteToggleButton.addEventListener("click", () => {
+    void toggleMuteRoom();
+  });
   elements.installButton.addEventListener("click", promptInstall);
-  elements.notificationButton.addEventListener("click", requestNotificationPermission);
+  elements.notificationButton.addEventListener("click", () => {
+    void requestNotificationPermission();
+  });
   elements.messageInput.addEventListener("input", autoResizeComposer);
 
   window.addEventListener("storage", (event) => {
     if (event.key === STORAGE_KEY) {
-      syncState();
+      void syncState();
     }
   });
 
   if (syncChannel) {
-    syncChannel.addEventListener("message", syncState);
+    syncChannel.addEventListener("message", () => {
+      void syncState();
+    });
   }
 
   window.addEventListener("beforeinstallprompt", (event) => {
@@ -279,22 +588,30 @@ function registerEvents() {
     renderInstallButton();
   });
 
-  window.addEventListener("online", renderOfflineState);
+  window.addEventListener("online", () => {
+    renderOfflineState();
+    if (hasSupabaseConfig) {
+      void scheduleFamilyRefresh();
+    }
+  });
   window.addEventListener("offline", renderOfflineState);
 
   document.addEventListener("visibilitychange", () => {
-    const family = getCurrentFamily();
-    const member = getCurrentMember();
-    if (family && member) {
-      touchMember(family.id, member.id);
-      saveState();
-      render();
+    if (document.visibilityState !== "visible") {
+      return;
     }
+
+    void touchCurrentMember();
+    void markActiveRoomRead({ silent: true });
   });
 }
 
-function handleCreateFamily(event) {
+async function handleCreateFamily(event) {
   event.preventDefault();
+  if (!ensureBackendReady()) {
+    return;
+  }
+
   const familyName = elements.familyNameInput.value.trim();
   const adminName = elements.adminNameInput.value.trim();
 
@@ -303,48 +620,38 @@ function handleCreateFamily(event) {
     return;
   }
 
-  const familyId = createId("family");
-  const adminId = createId("member");
-  const familyRoomId = createId("room");
-  const family = {
-    id: familyId,
-    name: familyName,
-    createdAt: new Date().toISOString(),
-    members: [createMember(adminId, adminName, "admin")],
-    rooms: [{
-      id: familyRoomId,
-      familyId,
-      type: "family",
-      title: "가족 전체방",
-      memberIds: [adminId],
-      createdAt: new Date().toISOString(),
-      mutedBy: {},
-    }],
-    invites: [],
-    messages: [],
-    settings: {
-      allowGroupRooms: false,
-    },
-  };
-
-  state.families.push(family);
-  addSystemMessage(family, familyRoomId, `${familyName} 가족 채팅방이 만들어졌습니다.`);
-  createInvite(family, adminId);
-  createInvite(family, adminId);
-  upsertDeviceProfile(family.id, adminId);
-  state.currentSession = {
-    familyId: family.id,
-    memberId: adminId,
-    activeRoomId: familyRoomId,
-  };
-  saveState();
-  elements.createFamilyForm.reset();
-  showToast("가족 그룹이 만들어졌습니다.");
-  render();
+  try {
+    const session = await createFamilyRemote(familyName, adminName);
+    state.currentSession = {
+      familyId: session.familyId,
+      memberId: session.memberId,
+      activeRoomId: session.activeRoomId,
+    };
+    upsertDeviceProfile({
+      familyId: session.familyId,
+      memberId: session.memberId,
+      familyName: session.familyName,
+      memberName: session.memberName,
+      role: session.role,
+    });
+    saveState();
+    await refreshCurrentFamily({ persist: false, skipToast: true });
+    elements.createFamilyForm.reset();
+    render();
+    showToast("가족 그룹이 만들어졌습니다.");
+    broadcastRefresh();
+  } catch (error) {
+    console.error("Create family failed", error);
+    showToast(extractErrorMessage(error, "가족 그룹 생성에 실패했습니다."));
+  }
 }
 
-function handleJoinFamily(event) {
+async function handleJoinFamily(event) {
   event.preventDefault();
+  if (!ensureBackendReady()) {
+    return;
+  }
+
   const inviteCode = elements.inviteCodeInput.value.trim().toUpperCase();
   const memberName = elements.memberNameInput.value.trim();
 
@@ -353,48 +660,33 @@ function handleJoinFamily(event) {
     return;
   }
 
-  const inviteMatch = findInvite(inviteCode);
-  if (!inviteMatch) {
-    showToast("유효한 초대 코드를 찾지 못했습니다.");
-    return;
+  try {
+    const session = await joinFamilyRemote(inviteCode, memberName);
+    state.currentSession = {
+      familyId: session.familyId,
+      memberId: session.memberId,
+      activeRoomId: session.activeRoomId,
+    };
+    upsertDeviceProfile({
+      familyId: session.familyId,
+      memberId: session.memberId,
+      familyName: session.familyName,
+      memberName: session.memberName,
+      role: session.role,
+    });
+    saveState();
+    await refreshCurrentFamily({ persist: false, skipToast: true });
+    elements.joinFamilyForm.reset();
+    render();
+    showToast(`${session.familyName} 가족에 참여했습니다.`);
+    broadcastRefresh();
+  } catch (error) {
+    console.error("Join family failed", error);
+    showToast(extractErrorMessage(error, "가족 참여에 실패했습니다."));
   }
-
-  const { family, invite } = inviteMatch;
-  if (invite.status !== "active") {
-    showToast("이미 사용된 초대 코드입니다.");
-    return;
-  }
-
-  const memberId = createId("member");
-  const member = createMember(memberId, memberName, "member");
-  const familyRoom = family.rooms.find((room) => room.type === "family");
-
-  family.members.push(member);
-  if (familyRoom && !familyRoom.memberIds.includes(memberId)) {
-    familyRoom.memberIds.push(memberId);
-  }
-  invite.status = "used";
-  invite.usedBy = memberId;
-  invite.usedAt = new Date().toISOString();
-
-  ensureDirectRoomsForFamily(family);
-  if (familyRoom) {
-    addSystemMessage(family, familyRoom.id, `${member.name}님이 가족 그룹에 참여했습니다.`);
-  }
-
-  upsertDeviceProfile(family.id, memberId);
-  state.currentSession = {
-    familyId: family.id,
-    memberId,
-    activeRoomId: familyRoom?.id ?? family.rooms[0]?.id ?? null,
-  };
-  saveState();
-  elements.joinFamilyForm.reset();
-  showToast(`${family.name} 가족에 참여했습니다.`);
-  render();
 }
 
-function handleCreateInvite() {
+async function handleCreateInvite() {
   const family = getCurrentFamily();
   const member = getCurrentMember();
 
@@ -403,10 +695,16 @@ function handleCreateInvite() {
     return;
   }
 
-  const invite = createInvite(family, member.id);
-  saveState();
-  showToast(`${invite.code} 생성 완료`);
-  render();
+  try {
+    const invite = await createInviteRemote(family.id, member.id);
+    await refreshCurrentFamily({ persist: false, skipToast: true });
+    render();
+    showToast(`${invite.code} 생성 완료`);
+    broadcastRefresh();
+  } catch (error) {
+    console.error("Create invite failed", error);
+    showToast(extractErrorMessage(error, "초대 코드 생성에 실패했습니다."));
+  }
 }
 
 function handleInviteClick(event) {
@@ -422,20 +720,24 @@ function handleInviteClick(event) {
   );
 }
 
-function handleRoomClick(event) {
+async function handleRoomClick(event) {
   const button = event.target.closest("[data-room-id]");
   if (!button || !state.currentSession) {
     return;
   }
 
   state.currentSession.activeRoomId = button.dataset.roomId;
-  markRoomRead();
   saveState();
   render();
   setDrawer(false);
+  await markActiveRoomRead({ silent: true });
 }
 
-function handleMemberClick(event) {
+async function handleMemberClick(event) {
+  if (!ensureBackendReady()) {
+    return;
+  }
+
   const button = event.target.closest("[data-member-id]");
   const family = getCurrentFamily();
   const currentMember = getCurrentMember();
@@ -450,41 +752,62 @@ function handleMemberClick(event) {
     return;
   }
 
-  const room = ensureDirectRoom(family, currentMember.id, targetId);
-  state.currentSession.activeRoomId = room.id;
-  markRoomRead();
-  saveState();
-  render();
-  setDrawer(false);
+  try {
+    const room = await getOrCreateDmRoomRemote(family.id, currentMember.id, targetId);
+    state.currentSession.activeRoomId = room.id;
+    saveState();
+    await refreshCurrentFamily({ persist: false, skipToast: true });
+    render();
+    setDrawer(false);
+    await markActiveRoomRead({ silent: true });
+    broadcastRefresh();
+  } catch (error) {
+    console.error("Open dm failed", error);
+    showToast(extractErrorMessage(error, "1:1 채팅방을 열지 못했습니다."));
+  }
 }
 
-function handleProfileClick(event) {
+async function handleProfileClick(event) {
+  if (!ensureBackendReady()) {
+    return;
+  }
+
   const button = event.target.closest("[data-profile-key]");
   if (!button) {
     return;
   }
 
-  const [familyId, memberId] = button.dataset.profileKey.split(":");
-  const family = findFamily(familyId);
-  const member = family ? findMember(family, memberId) : null;
-
-  if (!family || !member) {
+  const profile = getSavedProfile(button.dataset.profileKey);
+  if (!profile) {
     showToast("저장된 프로필을 찾을 수 없습니다.");
     return;
   }
 
   state.currentSession = {
-    familyId,
-    memberId,
-    activeRoomId: getRoomsForMember(family, memberId)[0]?.id ?? null,
+    familyId: profile.familyId,
+    memberId: profile.memberId,
+    activeRoomId: null,
   };
-  touchMember(family.id, member.id);
   saveState();
+
+  const family = await refreshCurrentFamily({ persist: false, skipToast: true });
+  if (!family) {
+    render();
+    showToast("저장된 프로필을 더 이상 사용할 수 없습니다.");
+    return;
+  }
+
   render();
+  await touchCurrentMember();
+  await markActiveRoomRead({ silent: true });
 }
 
-function handleSendMessage(event) {
+async function handleSendMessage(event) {
   event.preventDefault();
+  if (!ensureBackendReady()) {
+    return;
+  }
+
   const family = getCurrentFamily();
   const member = getCurrentMember();
   const room = getActiveRoom();
@@ -499,27 +822,28 @@ function handleSendMessage(event) {
     return;
   }
 
-  family.messages.push({
-    id: createId("message"),
-    roomId: room.id,
-    familyId: family.id,
-    senderId: member.id,
-    type: pendingImage ? "image" : "text",
-    text,
-    imageDataUrl: pendingImage?.dataUrl ?? null,
-    createdAt: new Date().toISOString(),
-    readBy: {
-      [member.id]: new Date().toISOString(),
-    },
-  });
+  try {
+    await sendMessageRemote(
+      family.id,
+      room.id,
+      member.id,
+      pendingImage ? "image" : "text",
+      text,
+      pendingImage?.dataUrl ?? "",
+    );
 
-  touchMember(family.id, member.id);
-  elements.messageInput.value = "";
-  clearPendingImage();
-  autoResizeComposer();
-  markRoomRead();
-  saveState();
-  render();
+    elements.messageInput.value = "";
+    clearPendingImage();
+    autoResizeComposer();
+    await touchCurrentMember();
+    await refreshCurrentFamily({ persist: false, skipToast: true });
+    render();
+    await markActiveRoomRead({ silent: true });
+    broadcastRefresh();
+  } catch (error) {
+    console.error("Send message failed", error);
+    showToast(extractErrorMessage(error, "메시지 전송에 실패했습니다."));
+  }
 }
 
 function handleImageSelection(event) {
@@ -554,8 +878,97 @@ function handleImageSelection(event) {
 
 function handleLogout() {
   state.currentSession = null;
+  state.families = [];
+  unsubscribeFamilyChanges();
   saveState();
   render();
+}
+
+async function markActiveRoomRead({ silent = false } = {}) {
+  const family = getCurrentFamily();
+  const member = getCurrentMember();
+  const room = getActiveRoom();
+
+  if (!family || !member || !room) {
+    return;
+  }
+
+  const changed = markRoomReadInState(family, room.id, member.id);
+  if (!changed) {
+    return;
+  }
+
+  render();
+
+  try {
+    await markRoomReadRemote(room.id, member.id);
+    broadcastRefresh();
+  } catch (error) {
+    console.error("Mark room read failed", error);
+    if (!silent) {
+      showToast(extractErrorMessage(error, "읽음 상태를 저장하지 못했습니다."));
+    }
+  }
+}
+
+function markRoomReadInState(family, roomId, memberId) {
+  let changed = false;
+
+  getMessagesForRoom(family, roomId).forEach((message) => {
+    if (message.type === "system") {
+      return;
+    }
+
+    message.readBy = message.readBy || {};
+    if (!message.readBy[memberId]) {
+      message.readBy[memberId] = new Date().toISOString();
+      changed = true;
+    }
+  });
+
+  return changed;
+}
+
+async function toggleMuteRoom() {
+  const room = getActiveRoom();
+  const member = getCurrentMember();
+
+  if (!room || !member) {
+    return;
+  }
+
+  const nextMuted = !Boolean(room.mutedBy?.[member.id]);
+  room.mutedBy = room.mutedBy || {};
+  room.mutedBy[member.id] = nextMuted;
+  render();
+
+  try {
+    await setRoomMuteRemote(room.id, member.id, nextMuted);
+    broadcastRefresh();
+  } catch (error) {
+    console.error("Mute toggle failed", error);
+    room.mutedBy[member.id] = !nextMuted;
+    render();
+    showToast(extractErrorMessage(error, "알림 설정 저장에 실패했습니다."));
+  }
+}
+
+async function touchCurrentMember() {
+  const family = getCurrentFamily();
+  const member = getCurrentMember();
+
+  if (!family || !member) {
+    return;
+  }
+
+  member.lastSeenAt = new Date().toISOString();
+  render();
+
+  try {
+    await touchMemberRemote(member.id);
+  } catch (error) {
+    console.error("Touch member failed", error);
+  }
 }
 
 function render() {
@@ -563,12 +976,13 @@ function render() {
   const member = getCurrentMember();
 
   renderOfflineState();
+  renderSavedProfiles();
+  renderBackendDisabledState();
 
   if (!family || !member) {
     elements.onboardingView.classList.remove("hidden");
     elements.appView.classList.add("hidden");
     setDrawer(false);
-    renderSavedProfiles();
     return;
   }
 
@@ -588,7 +1002,6 @@ function render() {
   elements.familyPresenceLabel.textContent = `${family.members.length}명 가족 그룹 · 가족 외 연결 차단`;
   elements.inviteSection.classList.toggle("hidden", member.role !== "admin");
 
-  renderSavedProfiles();
   renderRoomList(family, member, rooms);
   renderMemberList(family, member);
   renderInviteList(family, member);
@@ -597,22 +1010,15 @@ function render() {
 }
 
 function renderSavedProfiles() {
-  const profiles = state.deviceProfiles.map((profile) => {
-    const family = findFamily(profile.familyId);
-    const member = family ? findMember(family, profile.memberId) : null;
-    if (!family || !member) {
-      return null;
-    }
-
-    return {
-      key: `${profile.familyId}:${profile.memberId}`,
-      familyName: family.name,
-      memberName: member.name,
-      role: member.role,
-    };
-  }).filter(Boolean);
+  const profiles = state.deviceProfiles.map((profile) => ({
+    key: `${profile.familyId}:${profile.memberId}`,
+    familyName: profile.familyName,
+    memberName: profile.memberName,
+    role: profile.role,
+  }));
 
   elements.savedProfilesPanel.classList.toggle("hidden", profiles.length === 0);
+
   const markup = profiles.length
     ? profiles.map((profile) => `
       <button class="saved-profile" type="button" data-profile-key="${profile.key}">
@@ -698,7 +1104,6 @@ function renderChat(family, member, room) {
     return;
   }
 
-  markRoomRead();
   const messages = getMessagesForRoom(family, room.id);
 
   elements.roomTypeLabel.textContent = room.type === "family" ? "가족 전체방" : room.type === "dm" ? "가족 내부 1:1" : "가족 그룹방";
@@ -759,47 +1164,13 @@ function renderMessage(family, currentMember, room, message) {
   `;
 }
 
-function markRoomRead() {
-  const family = getCurrentFamily();
-  const member = getCurrentMember();
-  const room = getActiveRoom();
-
-  if (!family || !member || !room) {
-    return;
-  }
-
-  let changed = false;
-  getMessagesForRoom(family, room.id).forEach((message) => {
-    message.readBy = message.readBy || {};
-    if (!message.readBy[member.id]) {
-      message.readBy[member.id] = new Date().toISOString();
-      changed = true;
-    }
-  });
-
-  if (changed) {
-    saveState({ broadcast: false });
-  }
-}
-
-function toggleMuteRoom() {
-  const room = getActiveRoom();
-  const member = getCurrentMember();
-  if (!room || !member) {
-    return;
-  }
-  room.mutedBy = room.mutedBy || {};
-  room.mutedBy[member.id] = !room.mutedBy[member.id];
-  saveState();
-  render();
-}
-
 function renderPendingImage() {
   if (!pendingImage) {
     elements.imagePreviewWrap.classList.add("hidden");
     elements.imagePreview.removeAttribute("src");
     return;
   }
+
   elements.imagePreviewWrap.classList.remove("hidden");
   elements.imagePreview.src = pendingImage.dataUrl;
 }
@@ -813,103 +1184,43 @@ function renderOfflineState() {
   elements.offlineBanner.classList.toggle("hidden", navigator.onLine);
 }
 
-function addSystemMessage(family, roomId, text) {
-  family.messages.push({
-    id: createId("message"),
-    roomId,
-    familyId: family.id,
-    senderId: null,
-    type: "system",
-    text,
-    imageDataUrl: null,
-    createdAt: new Date().toISOString(),
-    readBy: {},
+function renderBackendDisabledState() {
+  const disabled = !hasSupabaseConfig;
+  [...elements.createFamilyForm.elements].forEach((field) => {
+    field.disabled = disabled;
+  });
+  [...elements.joinFamilyForm.elements].forEach((field) => {
+    field.disabled = disabled;
   });
 }
 
-function createMember(memberId, name, role) {
-  return {
-    id: memberId,
-    name,
-    role,
-    createdAt: new Date().toISOString(),
-    lastSeenAt: new Date().toISOString(),
-  };
-}
-
-function createInvite(family, createdBy) {
-  const invite = {
-    id: createId("invite"),
-    code: `FAM-${Math.random().toString(36).slice(2, 8).toUpperCase()}`,
-    createdAt: new Date().toISOString(),
-    createdBy,
-    status: "active",
-    usedBy: null,
-    usedAt: null,
-  };
-  family.invites.push(invite);
-  return invite;
-}
-
-function findInvite(code) {
-  for (const family of state.families) {
-    const invite = family.invites.find((item) => item.code === code);
-    if (invite) {
-      return { family, invite };
-    }
-  }
-  return null;
-}
-
-function ensureDirectRoomsForFamily(family) {
-  family.members.forEach((member) => {
-    family.members.forEach((peer) => {
-      if (member.id !== peer.id) {
-        ensureDirectRoom(family, member.id, peer.id);
-      }
-    });
-  });
-}
-
-function ensureDirectRoom(family, firstMemberId, secondMemberId) {
-  const targetKey = [firstMemberId, secondMemberId].sort().join(":");
-  const existing = family.rooms.find((room) => room.type === "dm" && room.memberIds.slice().sort().join(":") === targetKey);
+function upsertDeviceProfile(profile) {
+  const existing = state.deviceProfiles.find((item) => item.familyId === profile.familyId && item.memberId === profile.memberId);
   if (existing) {
-    return existing;
-  }
-
-  const room = {
-    id: createId("room"),
-    familyId: family.id,
-    type: "dm",
-    title: "",
-    memberIds: [firstMemberId, secondMemberId].sort(),
-    createdAt: new Date().toISOString(),
-    mutedBy: {},
-  };
-  family.rooms.push(room);
-  return room;
-}
-
-function upsertDeviceProfile(familyId, memberId) {
-  const existing = state.deviceProfiles.find((profile) => profile.familyId === familyId && profile.memberId === memberId);
-  if (existing) {
+    existing.familyName = profile.familyName;
+    existing.memberName = profile.memberName;
+    existing.role = profile.role;
     existing.savedAt = new Date().toISOString();
     return;
   }
+
   state.deviceProfiles.push({
-    familyId,
-    memberId,
+    familyId: profile.familyId,
+    memberId: profile.memberId,
+    familyName: profile.familyName,
+    memberName: profile.memberName,
+    role: profile.role,
     savedAt: new Date().toISOString(),
   });
 }
 
-function touchMember(familyId, memberId) {
-  const family = findFamily(familyId);
-  const member = family ? findMember(family, memberId) : null;
-  if (member) {
-    member.lastSeenAt = new Date().toISOString();
-  }
+function removeDeviceProfile(familyId, memberId) {
+  state.deviceProfiles = state.deviceProfiles.filter((profile) => !(profile.familyId === familyId && profile.memberId === memberId));
+}
+
+function getSavedProfile(profileKey) {
+  const [familyId, memberId] = profileKey.split(":");
+  return state.deviceProfiles.find((profile) => profile.familyId === familyId && profile.memberId === memberId) ?? null;
 }
 
 function setDrawer(open) {
@@ -1013,6 +1324,7 @@ function formatPresence(lastSeenAt) {
   if (!lastSeenAt) {
     return "최근 접속 정보 없음";
   }
+
   const diffMs = Date.now() - new Date(lastSeenAt).getTime();
   const minutes = Math.floor(diffMs / 60000);
   if (minutes < 1) {
@@ -1021,10 +1333,12 @@ function formatPresence(lastSeenAt) {
   if (minutes < 60) {
     return `${minutes}분 전 활동`;
   }
+
   const hours = Math.floor(minutes / 60);
   if (hours < 24) {
     return `${hours}시간 전 접속`;
   }
+
   const days = Math.floor(hours / 24);
   return `${days}일 전 접속`;
 }
@@ -1044,10 +1358,6 @@ function escapeHtml(value) {
     .replaceAll("'", "&#39;");
 }
 
-function createId(prefix) {
-  return `${prefix}-${Math.random().toString(36).slice(2, 10)}-${Date.now().toString(36)}`;
-}
-
 function showToast(message) {
   elements.toast.textContent = message;
   elements.toast.classList.remove("hidden");
@@ -1055,4 +1365,27 @@ function showToast(message) {
   toastTimer = window.setTimeout(() => {
     elements.toast.classList.add("hidden");
   }, 2200);
+}
+
+function isSupabaseConfigured(config) {
+  return Boolean(
+    config.url
+    && config.anonKey
+    && !String(config.url).includes("YOUR_PROJECT_REF")
+    && !String(config.anonKey).includes("YOUR_SUPABASE_ANON_KEY"),
+  );
+}
+
+function ensureBackendReady() {
+  if (supabase) {
+    return true;
+  }
+
+  showToast("supabase.config.js에 Supabase URL과 anon key를 입력하세요.");
+  return false;
+}
+
+function extractErrorMessage(error, fallbackMessage) {
+  const message = error?.message?.trim();
+  return message ? message : fallbackMessage;
 }

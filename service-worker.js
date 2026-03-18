@@ -1,9 +1,10 @@
-const CACHE_NAME = "familychat-shell-v1";
+const CACHE_NAME = "familychat-shell-v2";
 const APP_SHELL = [
   "./",
   "./index.html",
   "./styles.css",
   "./app.js",
+  "./supabase.config.js",
   "./manifest.webmanifest",
   "./icons/icon-192.svg",
   "./icons/icon-512.svg",
