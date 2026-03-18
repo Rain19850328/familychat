@@ -35,14 +35,11 @@ jobs:
       - name: Verify Frontend
         run: npm run verify:deploy
 
+      - name: Build Static Artifact
+        run: npm run build:static
+
       - name: Configure Pages
         uses: actions/configure-pages@v5
-
-      - name: Prepare Static Artifact
-        run: |
-          mkdir dist
-          cp index.html app.js styles.css manifest.webmanifest service-worker.js supabase.config.js dist/
-          cp -r icons dist/icons
 
       - name: Upload Pages Artifact
         uses: actions/upload-pages-artifact@v3
