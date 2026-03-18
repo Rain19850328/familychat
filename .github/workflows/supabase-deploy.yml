@@ -34,8 +34,30 @@ jobs:
         with:
           version: latest
 
+      - name: Login to Supabase
+        run: supabase login --token "$SUPABASE_ACCESS_TOKEN"
+
+      - name: Validate Project Ref Format
+        shell: bash
+        run: |
+          if [[ ! "$SUPABASE_PROJECT_ID" =~ ^[a-z0-9]{20}$ ]]; then
+            echo "::error::SUPABASE_PROJECT_ID must be the Supabase project ref (20 lowercase letters/numbers), not the GitHub repo id or project name."
+            exit 1
+          fi
+          echo "Project ref format looks valid."
+
+      - name: Verify Supabase Project Access
+        shell: bash
+        run: |
+          supabase projects list -o json > projects.json
+          if ! grep -q "\"id\":\"$SUPABASE_PROJECT_ID\"" projects.json; then
+            echo "::error::Configured SUPABASE_PROJECT_ID was not found in projects accessible by this access token."
+            cat projects.json
+            exit 1
+          fi
+
       - name: Link Supabase Project
         run: supabase link --project-ref "$SUPABASE_PROJECT_ID" --password "$SUPABASE_DB_PASSWORD" --yes
 
       - name: Push Database Migrations
-        run: supabase db push --linked
+        run: supabase db push --linked --password "$SUPABASE_DB_PASSWORD" --yes
