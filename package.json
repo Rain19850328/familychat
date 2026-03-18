@@ -1,0 +1,11 @@
+{
+  "name": "18. RJS",
+  "private": true,
+  "scripts": {
+    "verify": "node scripts/verify-deploy.mjs",
+    "verify:deploy": "node scripts/verify-deploy.mjs --require-config"
+  },
+  "devDependencies": {
+    "supabase": "^2.81.0"
+  }
+}

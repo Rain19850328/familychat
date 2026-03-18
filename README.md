@@ -17,17 +17,23 @@
 - `supabase.config.js`
 - `app.js`
 
-## 설정 방법
+## 배포 순서
 
-1. `supabase.config.js`에 프로젝트 URL과 anon key를 입력합니다.
-2. 로컬 Supabase를 쓸 경우 Docker가 실행 중이어야 합니다.
-3. 마이그레이션을 적용합니다.
+1. 백엔드 DB 마이그레이션은 GitHub Actions `Deploy Supabase Migrations`로 반영합니다.
+2. `supabase.config.js`에 프론트에서 사용할 실제 `url`, `anonKey`를 입력합니다.
+3. 배포 전 정적 파일 검증을 실행합니다.
 
 ```powershell
-npx supabase db reset
+npm run verify
 ```
 
-4. 정적 서버로 앱을 실행합니다.
+4. 운영용 설정까지 채웠다면 강한 검증을 실행합니다.
+
+```powershell
+npm run verify:deploy
+```
+
+5. 정적 서버 또는 프론트 호스팅에 배포합니다.
 
 ```powershell
 npx serve .
@@ -38,3 +44,4 @@ npx serve .
 - 현재 이미지 첨부는 `Supabase Storage`가 아니라 메시지 테이블의 `image_data_url` 컬럼에 저장됩니다.
 - 운영 환경에서는 이후 `Storage` 버킷으로 옮기는 편이 맞습니다.
 - 현재 권한 모델은 MVP 수준입니다. 익명 `anon key`로 RPC를 호출할 수 있으므로, 운영 전에는 `RLS`와 인증 전략을 별도로 정리해야 합니다.
+- `supabase.config.js`에 플레이스홀더가 남아 있으면 `npm run verify:deploy`가 실패합니다.
