@@ -1,4 +1,5 @@
 name: Deploy Supabase Migrations
+# Triggered on migration and workflow changes.
 
 on:
   push:
