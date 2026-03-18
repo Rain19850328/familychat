@@ -1,5 +1,5 @@
 name: Deploy Supabase Migrations
-# Triggered on migration and workflow changes. Manual verification update 3.
+# Triggered on migration and workflow changes.
 
 on:
   push:
@@ -23,8 +23,8 @@ jobs:
     runs-on: ubuntu-latest
     env:
       SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
-      SUPABASE_DB_PASSWORD: ${{ secrets.SUPABASE_DB_PASSWORD }}
       SUPABASE_PROJECT_ID: ${{ secrets.SUPABASE_PROJECT_ID }}
+      SUPABASE_DB_URL: ${{ secrets.SUPABASE_DB_URL }}
 
     steps:
       - name: Checkout
@@ -51,14 +51,23 @@ jobs:
         shell: bash
         run: |
           supabase projects list -o json > projects.json
-          if ! grep -q "\"id\":\"$SUPABASE_PROJECT_ID\"" projects.json; then
+          if ! grep -q "\"ref\":\"$SUPABASE_PROJECT_ID\"" projects.json; then
             echo "::error::Configured SUPABASE_PROJECT_ID was not found in projects accessible by this access token."
             cat projects.json
             exit 1
           fi
 
-      - name: Link Supabase Project
-        run: supabase link --project-ref "$SUPABASE_PROJECT_ID" --password "$SUPABASE_DB_PASSWORD" --yes
+      - name: Validate DB URL
+        shell: bash
+        run: |
+          if [[ -z "$SUPABASE_DB_URL" ]]; then
+            echo "::error::SUPABASE_DB_URL secret is empty."
+            exit 1
+          fi
+          if [[ ! "$SUPABASE_DB_URL" =~ ^postgres(ql)?:// ]]; then
+            echo "::error::SUPABASE_DB_URL must start with postgres:// or postgresql://"
+            exit 1
+          fi
 
       - name: Push Database Migrations
-        run: supabase db push --linked --password "$SUPABASE_DB_PASSWORD" --yes
+        run: supabase db push --db-url "$SUPABASE_DB_URL" --yes
