@@ -35,7 +35,7 @@ jobs:
           version: latest
 
       - name: Link Supabase Project
-        run: supabase link --project-ref "$SUPABASE_PROJECT_ID"
+        run: supabase link --project-ref "$SUPABASE_PROJECT_ID" --password "$SUPABASE_DB_PASSWORD" --yes
 
       - name: Push Database Migrations
         run: supabase db push --linked
