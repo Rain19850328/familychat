@@ -4,6 +4,8 @@ const STORAGE_KEY = "familychat.closed.pwa.v2";
 const CHANNEL_KEY = "familychat.closed.pwa.channel";
 const MAX_IMAGE_SIZE = 2 * 1024 * 1024;
 const REALTIME_TABLES = ["families", "members", "rooms", "room_members", "invites", "messages", "message_reads"];
+const ACTIVE_REFRESH_INTERVAL_MS = 3000;
+const BACKGROUND_REFRESH_INTERVAL_MS = 12000;
 
 const elements = {
   onboardingView: document.getElementById("onboardingView"),
@@ -68,6 +70,7 @@ let toastTimer = null;
 let familyChannel = null;
 let subscribedFamilyId = null;
 let refreshPromise = null;
+let refreshTimer = null;
 
 bootstrap();
 
@@ -84,6 +87,7 @@ async function bootstrap() {
 
   await refreshCurrentFamily({ skipToast: true });
   render();
+  syncLiveRefresh();
   void markActiveRoomRead({ silent: true });
 }
 
@@ -199,6 +203,7 @@ async function refreshCurrentFamily({
   if (!supabase || !state.currentSession) {
     state.families = [];
     unsubscribeFamilyChanges();
+    stopLiveRefresh();
     if (persist) {
       saveState({ broadcast: false });
     }
@@ -227,6 +232,7 @@ async function refreshCurrentFamily({
         state.currentSession = null;
         removeDeviceProfile(sessionAtStart.familyId, sessionAtStart.memberId);
         unsubscribeFamilyChanges();
+        stopLiveRefresh();
         if (persist) {
           saveState();
         }
@@ -244,6 +250,7 @@ async function refreshCurrentFamily({
         state.currentSession = null;
         removeDeviceProfile(sessionAtStart.familyId, sessionAtStart.memberId);
         unsubscribeFamilyChanges();
+        stopLiveRefresh();
         if (persist) {
           saveState();
         }
@@ -265,6 +272,7 @@ async function refreshCurrentFamily({
       });
 
       subscribeToFamilyChanges(family.id);
+      syncLiveRefresh();
 
       if (persist) {
         saveState({ broadcast: false });
@@ -322,6 +330,11 @@ function subscribeToFamilyChanges(familyId) {
   familyChannel = channel.subscribe((status) => {
     if (status === "CHANNEL_ERROR") {
       console.error("Realtime subscription failed");
+      queueLiveRefresh(1200);
+    }
+
+    if (status === "TIMED_OUT" || status === "CLOSED") {
+      queueLiveRefresh(1200);
     }
   });
   subscribedFamilyId = familyId;
@@ -345,6 +358,41 @@ async function scheduleFamilyRefresh() {
     skipToast: true,
   });
   render();
+  syncLiveRefresh();
+}
+
+function syncLiveRefresh() {
+  if (!hasSupabaseConfig || !state.currentSession || !navigator.onLine) {
+    stopLiveRefresh();
+    return;
+  }
+
+  queueLiveRefresh();
+}
+
+function queueLiveRefresh(delay = getLiveRefreshInterval()) {
+  window.clearTimeout(refreshTimer);
+
+  if (!hasSupabaseConfig || !state.currentSession || !navigator.onLine) {
+    refreshTimer = null;
+    return;
+  }
+
+  refreshTimer = window.setTimeout(async () => {
+    await scheduleFamilyRefresh();
+    queueLiveRefresh();
+  }, delay);
+}
+
+function stopLiveRefresh() {
+  window.clearTimeout(refreshTimer);
+  refreshTimer = null;
+}
+
+function getLiveRefreshInterval() {
+  return document.visibilityState === "visible"
+    ? ACTIVE_REFRESH_INTERVAL_MS
+    : BACKGROUND_REFRESH_INTERVAL_MS;
 }
 
 async function rpc(name, params = {}) {
@@ -598,17 +646,33 @@ function registerEvents() {
     renderOfflineState();
     if (hasSupabaseConfig) {
       void scheduleFamilyRefresh();
+      queueLiveRefresh(1200);
     }
   });
-  window.addEventListener("offline", renderOfflineState);
+  window.addEventListener("offline", () => {
+    renderOfflineState();
+    stopLiveRefresh();
+  });
 
   document.addEventListener("visibilitychange", () => {
+    syncLiveRefresh();
+
     if (document.visibilityState !== "visible") {
       return;
     }
 
     void touchCurrentMember();
+    void scheduleFamilyRefresh();
     void markActiveRoomRead({ silent: true });
+  });
+
+  window.addEventListener("pageshow", () => {
+    if (!hasSupabaseConfig) {
+      return;
+    }
+
+    void scheduleFamilyRefresh();
+    queueLiveRefresh(1000);
   });
 }
 
@@ -886,6 +950,7 @@ function handleLogout() {
   state.currentSession = null;
   state.families = [];
   unsubscribeFamilyChanges();
+  stopLiveRefresh();
   saveState();
   render();
 }
