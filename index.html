@@ -11,7 +11,7 @@
   <title>우리 가족 채팅</title>
   <link rel="manifest" href="manifest.webmanifest">
   <link rel="icon" href="icons/icon-192.svg" type="image/svg+xml">
-  <link rel="apple-touch-icon" href="icons/icon-192.svg">
+  <link rel="apple-touch-icon" sizes="180x180" href="icons/apple-touch-icon.png">
   <link rel="stylesheet" href="styles.css">
 </head>
 <body>
@@ -165,9 +165,11 @@
         <section class="message-list" id="messageList"></section>
 
         <form class="composer" id="composerForm">
-          <label class="attach-button" for="imageInput">사진</label>
           <input id="imageInput" type="file" accept="image/*" hidden>
           <div class="composer-main">
+            <div class="composer-tools">
+              <label class="attach-button" for="imageInput">사진</label>
+            </div>
             <div class="image-preview hidden" id="imagePreviewWrap">
               <img id="imagePreview" alt="선택한 이미지 미리보기">
               <button class="image-remove" id="removeImageButton" type="button" aria-label="이미지 제거">×</button>

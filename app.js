@@ -588,6 +588,12 @@ function registerEvents() {
     renderInstallButton();
   });
 
+  window.addEventListener("appinstalled", () => {
+    deferredInstallPrompt = null;
+    renderInstallButton();
+    showToast("홈 화면에 앱 아이콘이 추가되었습니다.");
+  });
+
   window.addEventListener("online", () => {
     renderOfflineState();
     if (hasSupabaseConfig) {
@@ -1080,14 +1086,17 @@ function renderInviteList(family, member) {
     return;
   }
 
-  const invites = [...family.invites].sort((left, right) => right.createdAt.localeCompare(left.createdAt));
+  const invites = [...family.invites]
+    .filter((invite) => invite.status === "active")
+    .sort((left, right) => right.createdAt.localeCompare(left.createdAt))
+    .slice(0, 1);
   elements.inviteList.innerHTML = invites.length
     ? invites.map((invite) => `
       <article class="invite-card">
         <strong class="invite-code">${invite.code}</strong>
-        <p>${invite.status === "active" ? "사용 가능" : invite.status === "used" ? "사용 완료" : "폐기됨"} · ${formatDateTime(invite.createdAt)}</p>
+        <p>사용 가능 · ${formatDateTime(invite.createdAt)}</p>
         <div class="message-card-footer">
-          <span class="status-chip ${invite.status !== "active" ? "used" : ""}">${invite.status === "active" ? "active" : invite.status}</span>
+          <span class="status-chip">사용 가능</span>
           <button class="ghost-button compact" type="button" data-copy-invite="${invite.code}">복사</button>
         </div>
       </article>
@@ -1234,20 +1243,34 @@ function autoResizeComposer() {
 }
 
 function renderInstallButton() {
-  elements.installButton.disabled = !deferredInstallPrompt;
-  elements.installButton.textContent = deferredInstallPrompt ? "앱 설치" : "설치 준비됨";
+  if (isStandaloneMode()) {
+    elements.installButton.disabled = true;
+    elements.installButton.textContent = "설치 완료";
+    return;
+  }
+
+  elements.installButton.disabled = false;
+  elements.installButton.textContent = deferredInstallPrompt ? "앱 설치" : "홈 화면 추가";
 }
 
 async function promptInstall() {
+  if (isStandaloneMode()) {
+    showToast("이미 홈 화면에서 바로 실행할 수 있습니다.");
+    return;
+  }
+
   if (!deferredInstallPrompt) {
-    showToast("브라우저가 설치 프롬프트를 아직 제공하지 않았습니다.");
+    showToast(getInstallHelpMessage());
     return;
   }
 
   deferredInstallPrompt.prompt();
-  await deferredInstallPrompt.userChoice;
+  const choice = await deferredInstallPrompt.userChoice;
   deferredInstallPrompt = null;
   renderInstallButton();
+  if (choice.outcome !== "accepted") {
+    showToast("앱 설치를 취소했습니다.");
+  }
 }
 
 async function requestNotificationPermission() {
@@ -1289,8 +1312,8 @@ function maybeNotify(previousState, nextState) {
 
     new Notification(createRoomTitle(family, room, session.memberId), {
       body: nextLast.type === "image" ? "새 사진이 도착했습니다." : nextLast.text || "새 메시지가 도착했습니다.",
-      icon: "icons/icon-192.svg",
-      badge: "icons/icon-192.svg",
+      icon: "icons/icon-192.png",
+      badge: "icons/icon-192.png",
       tag: room.id,
     });
   });
@@ -1388,4 +1411,24 @@ function ensureBackendReady() {
 function extractErrorMessage(error, fallbackMessage) {
   const message = error?.message?.trim();
   return message ? message : fallbackMessage;
+}
+
+function isStandaloneMode() {
+  return window.matchMedia("(display-mode: standalone)").matches || window.navigator.standalone === true;
+}
+
+function getInstallHelpMessage() {
+  const userAgent = navigator.userAgent || "";
+  const isIOS = /iPad|iPhone|iPod/.test(userAgent)
+    || (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1);
+
+  if (isIOS) {
+    return "Safari의 공유 버튼에서 '홈 화면에 추가'를 선택하세요.";
+  }
+
+  if (/Android/i.test(userAgent)) {
+    return "브라우저 메뉴에서 '앱 설치' 또는 '홈 화면에 추가'를 선택하세요.";
+  }
+
+  return "브라우저 메뉴에서 '앱 설치' 또는 '홈 화면에 추가'를 선택하세요.";
 }

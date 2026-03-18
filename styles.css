@@ -445,15 +445,26 @@ button {
 .composer {
   padding: 14px 16px calc(14px + var(--safe-bottom));
   display: grid;
-  grid-template-columns: auto 1fr auto;
+  grid-template-columns: minmax(0, 1fr) auto;
   gap: 10px;
   align-items: end;
   border-top: 1px solid rgba(96, 63, 45, 0.08);
   background: rgba(255, 250, 244, 0.94);
 }
 
+.composer-main {
+  min-width: 0;
+}
+
+.composer-tools {
+  display: flex;
+  align-items: center;
+}
+
 .attach-button {
-  padding: 0 16px;
+  width: fit-content;
+  min-height: 40px;
+  padding: 0 14px;
   background: rgba(46, 32, 24, 0.08);
   color: var(--text);
   font-weight: 700;
@@ -461,12 +472,16 @@ button {
 
 .composer textarea {
   resize: none;
-  min-height: 52px;
+  min-height: 58px;
   max-height: 140px;
 }
 
 .send-button {
-  min-width: 72px;
+  min-width: 58px;
+  min-height: 42px;
+  padding: 0 14px;
+  border-radius: 14px;
+  font-size: 0.92rem;
 }
 
 .image-preview {

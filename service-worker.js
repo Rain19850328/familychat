@@ -1,4 +1,4 @@
-const CACHE_NAME = "familychat-shell-v3";
+const CACHE_NAME = "familychat-shell-v4";
 const APP_SHELL = [
   "./",
   "./index.html",
@@ -6,6 +6,9 @@ const APP_SHELL = [
   "./app.js",
   "./supabase.config.js",
   "./manifest.webmanifest",
+  "./icons/apple-touch-icon.png",
+  "./icons/icon-192.png",
+  "./icons/icon-512.png",
   "./icons/icon-192.svg",
   "./icons/icon-512.svg",
 ];
