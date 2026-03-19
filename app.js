@@ -33,10 +33,8 @@ const elements = {
   drawerScrim: document.getElementById("drawerScrim"),
   openDrawerButton: document.getElementById("openDrawerButton"),
   closeDrawerButton: document.getElementById("closeDrawerButton"),
-  roomTypeLabel: document.getElementById("roomTypeLabel"),
   roomTitleLabel: document.getElementById("roomTitleLabel"),
   muteToggleButton: document.getElementById("muteToggleButton"),
-  chatMeta: document.getElementById("chatMeta"),
   messageList: document.getElementById("messageList"),
   composerForm: document.getElementById("composerForm"),
   messageInput: document.getElementById("messageInput"),
@@ -1204,31 +1202,15 @@ function renderInviteList(family, member) {
 
 function renderChat(family, member, room) {
   if (!room) {
-    elements.roomTypeLabel.textContent = "채팅방 없음";
     elements.roomTitleLabel.textContent = "가족 참여를 기다리는 중";
-    elements.chatMeta.innerHTML = "";
     elements.messageList.innerHTML = `<div class="empty-state">가족 구성원이 참여하면 대화를 시작할 수 있습니다.</div>`;
     return;
   }
 
   const messages = getMessagesForRoom(family, room.id);
 
-  elements.roomTypeLabel.textContent = room.type === "family" ? "가족 전체방" : room.type === "dm" ? "가족 내부 1:1" : "가족 그룹방";
   elements.roomTitleLabel.textContent = createRoomTitle(family, room, member.id);
   elements.muteToggleButton.textContent = room.mutedBy?.[member.id] ? "알림 꺼짐" : "알림 켜짐";
-
-  if (room.type === "family") {
-    elements.chatMeta.innerHTML = `
-      <p>${family.members.map((item) => item.name).join(" · ")}</p>
-      <p>가족 외 사용자와는 연결되지 않습니다.</p>
-    `;
-  } else {
-    const peer = getDirectPeer(family, room, member.id);
-    elements.chatMeta.innerHTML = `
-      <p>${peer ? `${peer.name}님과의 가족 내부 1:1` : "가족 내부 1:1"}</p>
-      <p>${peer ? formatPresence(peer.lastSeenAt) : ""}</p>
-    `;
-  }
 
   elements.messageList.innerHTML = messages.length
     ? messages.map((message) => renderMessage(family, member, room, message)).join("")
@@ -1254,19 +1236,37 @@ function renderMessage(family, currentMember, room, message) {
   const sender = findMember(family, message.senderId);
   const isSelf = message.senderId === currentMember.id;
   const readCount = Object.keys(message.readBy || {}).filter((memberId) => memberId !== currentMember.id).length;
+  const showProfile = !isSelf && room.type !== "dm";
+  const showAuthor = showProfile;
+  const timeLabel = formatTime(message.createdAt);
+  const stateLabel = room.type === "family"
+    ? `읽음 ${readCount}/${Math.max(family.members.length - 1, 0)}`
+    : readCount ? "읽음" : "전달됨";
 
   return `
     <div class="message-row ${isSelf ? "self" : ""}">
-      ${isSelf ? "" : `<div class="avatar" style="background:${avatarColor(sender?.name || "가족")}">${escapeHtml((sender?.name || "?").slice(0, 1))}</div>`}
-      <article class="message-card">
-        ${isSelf ? "" : `<p class="message-author">${escapeHtml(sender?.name || "알 수 없음")}</p>`}
-        ${message.text ? `<p>${escapeHtml(message.text)}</p>` : ""}
-        ${message.imageDataUrl ? `<img class="message-image" src="${message.imageDataUrl}" alt="보낸 이미지">` : ""}
-        <div class="message-card-footer">
-          <span>${formatTime(message.createdAt)}</span>
-          <span>${room.type === "family" ? `읽음 ${readCount}/${Math.max(family.members.length - 1, 0)}` : readCount ? "읽음" : "전달됨"}</span>
+      ${showProfile ? `<div class="avatar" style="background:${avatarColor(sender?.name || "가족")}">${escapeHtml((sender?.name || "?").slice(0, 1))}</div>` : ""}
+      <div class="message-stack">
+        ${showAuthor ? `<p class="message-author">${escapeHtml(sender?.name || "알 수 없음")}</p>` : ""}
+        <div class="message-bubble-group">
+          ${isSelf ? `
+            <div class="message-side-meta">
+              <span>${escapeHtml(stateLabel)}</span>
+              <span>${timeLabel}</span>
+            </div>
+          ` : ""}
+          <article class="message-card">
+            ${message.text ? `<p>${escapeHtml(message.text)}</p>` : ""}
+            ${message.imageDataUrl ? `<img class="message-image" src="${message.imageDataUrl}" alt="보낸 이미지">` : ""}
+          </article>
+          ${isSelf ? "" : `
+            <div class="message-side-meta">
+              <span>${timeLabel}</span>
+              <span>${escapeHtml(stateLabel)}</span>
+            </div>
+          `}
         </div>
-      </article>
+      </div>
     </div>
   `;
 }
