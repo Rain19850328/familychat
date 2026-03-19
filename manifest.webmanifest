@@ -4,8 +4,8 @@
   "description": "초대 기반으로만 입장하는 폐쇄형 가족 채팅 PWA",
   "start_url": "./",
   "display": "standalone",
-  "background_color": "#fff7ef",
-  "theme_color": "#f36b4f",
+  "background_color": "#fff9f7",
+  "theme_color": "#cdbdff",
   "lang": "ko",
   "orientation": "portrait-primary",
   "icons": [
