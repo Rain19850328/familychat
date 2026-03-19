@@ -1,4 +1,4 @@
-name: Deploy Frontend To Cloudflare
+name: Deploy Frontend To Cloudflare Pages
 
 on:
   push:
@@ -8,6 +8,7 @@ on:
 
 permissions:
   contents: read
+  deployments: write
 
 jobs:
   deploy:
@@ -28,9 +29,12 @@ jobs:
       - name: Build Static Artifact
         run: npm run build:static
 
-      - name: Deploy to Cloudflare Workers
-        uses: cloudflare/wrangler-action@v3
+      - name: Deploy to Cloudflare Pages
+        uses: cloudflare/pages-action@v1
         with:
           apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
-          command: deploy
+          projectName: ${{ vars.CLOUDFLARE_PAGES_PROJECT_NAME || github.event.repository.name }}
+          directory: dist
+          gitHubToken: ${{ secrets.GITHUB_TOKEN }}
+          branch: main
