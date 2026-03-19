@@ -6,6 +6,7 @@ const MAX_IMAGE_SIZE = 2 * 1024 * 1024;
 const REALTIME_TABLES = ["families", "members", "rooms", "room_members", "invites", "messages", "message_reads"];
 const ACTIVE_REFRESH_INTERVAL_MS = 3000;
 const BACKGROUND_REFRESH_INTERVAL_MS = 12000;
+const BACKGROUND_SYNC_TAG = "familychat-message-check";
 
 const elements = {
   onboardingView: document.getElementById("onboardingView"),
@@ -73,6 +74,7 @@ let refreshPromise = null;
 let refreshTimer = null;
 let scheduledRefreshPromise = null;
 let queuedFamilyRefresh = false;
+let serviceWorkerRegistrationPromise = null;
 
 bootstrap();
 
@@ -90,6 +92,7 @@ async function bootstrap() {
   await refreshCurrentFamily({ skipToast: true });
   render();
   syncLiveRefresh();
+  void syncServiceWorkerState();
   void markActiveRoomRead({ silent: true });
 }
 
@@ -171,6 +174,8 @@ function saveState({ broadcast = true } = {}) {
   if (broadcast && syncChannel) {
     syncChannel.postMessage({ type: "sync", at: state.meta.lastUpdatedAt });
   }
+
+  void syncServiceWorkerState();
 }
 
 function broadcastRefresh() {
@@ -279,6 +284,8 @@ async function refreshCurrentFamily({
       if (persist) {
         saveState({ broadcast: false });
       }
+
+      void syncServiceWorkerState();
 
       if (notify) {
         maybeNotify(priorState, state);
@@ -697,6 +704,7 @@ function registerEvents() {
 
     void scheduleFamilyRefresh();
     queueLiveRefresh(1000);
+    void syncServiceWorkerState();
   });
 }
 
@@ -977,6 +985,7 @@ function handleLogout() {
   stopLiveRefresh();
   saveState();
   render();
+  void syncServiceWorkerState();
 }
 
 async function markActiveRoomRead({ silent = false } = {}) {
@@ -1369,6 +1378,7 @@ async function requestNotificationPermission() {
   }
 
   const result = await Notification.requestPermission();
+  void syncServiceWorkerState();
   showToast(result === "granted" ? "알림 권한이 허용되었습니다." : "알림 권한이 허용되지 않았습니다.");
 }
 
@@ -1410,10 +1420,93 @@ function maybeNotify(previousState, nextState) {
 
 function registerServiceWorker() {
   if ("serviceWorker" in navigator) {
-    navigator.serviceWorker.register("service-worker.js").catch((error) => {
+    serviceWorkerRegistrationPromise = navigator.serviceWorker.register("service-worker.js").then(async (registration) => {
+      await navigator.serviceWorker.ready;
+      await configureBackgroundSync(registration);
+      return registration;
+    }).catch((error) => {
       console.error("Service worker registration failed", error);
+      return null;
     });
   }
+}
+
+async function configureBackgroundSync(registration) {
+  if (!registration || !("Notification" in window) || Notification.permission !== "granted") {
+    return;
+  }
+
+  if ("periodicSync" in registration) {
+    try {
+      await registration.periodicSync.register(BACKGROUND_SYNC_TAG, {
+        minInterval: 60 * 1000,
+      });
+      return;
+    } catch (error) {
+      console.warn("Periodic background sync registration failed", error);
+    }
+  }
+
+  if ("sync" in registration) {
+    try {
+      await registration.sync.register(BACKGROUND_SYNC_TAG);
+    } catch (error) {
+      console.warn("Background sync registration failed", error);
+    }
+  }
+}
+
+async function syncServiceWorkerState() {
+  if (!("serviceWorker" in navigator) || !hasSupabaseConfig) {
+    return;
+  }
+
+  const registration = await (serviceWorkerRegistrationPromise ?? navigator.serviceWorker.ready.catch(() => null));
+  if (!registration) {
+    return;
+  }
+
+  await configureBackgroundSync(registration);
+
+  const worker = registration.active ?? registration.waiting ?? registration.installing;
+  if (!worker) {
+    return;
+  }
+
+  const family = getCurrentFamily();
+  const session = state.currentSession;
+
+  if (!session || !family) {
+    worker.postMessage({ type: "CLEAR_SESSION" });
+    return;
+  }
+
+  const lastMessageByRoom = {};
+  family.messages.forEach((message) => {
+    const previous = lastMessageByRoom[message.roomId];
+    if (!previous || previous.createdAt.localeCompare(message.createdAt) <= 0) {
+      lastMessageByRoom[message.roomId] = {
+        id: message.id,
+        createdAt: message.createdAt,
+      };
+    }
+  });
+
+  worker.postMessage({
+    type: "SYNC_SESSION",
+    payload: {
+      config: {
+        url: supabaseConfig.url,
+        anonKey: supabaseConfig.anonKey,
+      },
+      session: {
+        familyId: session.familyId,
+        memberId: session.memberId,
+      },
+      lastMessageByRoom,
+      notificationPermission: "Notification" in window ? Notification.permission : "default",
+    },
+  });
 }
 
 function formatTime(value) {
