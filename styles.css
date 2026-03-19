@@ -1,29 +1,29 @@
 :root {
-  --bg: #eff8ff;
-  --panel: rgba(255, 255, 255, 0.84);
-  --panel-strong: rgba(255, 255, 255, 0.96);
-  --line: rgba(34, 85, 135, 0.12);
-  --text: #20304f;
-  --muted: #5b6f91;
-  --accent: #ffcf33;
-  --accent-strong: #ff8a36;
-  --accent-soft: rgba(255, 207, 51, 0.2);
-  --mint: #7be0c3;
-  --sky: #7ecbff;
-  --berry: #ff7db7;
-  --shadow: 0 24px 50px rgba(70, 113, 176, 0.16);
-  --shadow-soft: 0 14px 28px rgba(76, 123, 188, 0.14);
+  --bg: #fff9f7;
+  --panel: rgba(255, 255, 255, 0.86);
+  --panel-strong: rgba(255, 255, 255, 0.97);
+  --line: rgba(205, 189, 255, 0.34);
+  --text: #4a4458;
+  --muted: #7a7388;
+  --accent: #cdbdff;
+  --accent-strong: #9d86ff;
+  --accent-soft: rgba(205, 189, 255, 0.2);
+  --pink: #ffcfe3;
+  --sky: #bfe8ff;
+  --yellow: #ffe89a;
+  --cream: #fff9f7;
+  --shadow: 0 24px 48px rgba(196, 175, 218, 0.2);
+  --shadow-soft: 0 12px 24px rgba(202, 187, 226, 0.16);
   --radius-xl: 32px;
-  --radius-md: 18px;
+  --radius-md: 20px;
   --safe-top: env(safe-area-inset-top, 0px);
   --safe-bottom: env(safe-area-inset-bottom, 0px);
   font-family: "Pretendard Variable", "SUIT Variable", "Apple SD Gothic Neo", "Malgun Gothic", sans-serif;
   color: var(--text);
   background:
-    radial-gradient(circle at 12% 14%, rgba(126, 203, 255, 0.34), transparent 26%),
-    radial-gradient(circle at 82% 12%, rgba(255, 125, 183, 0.24), transparent 20%),
-    radial-gradient(circle at 78% 82%, rgba(123, 224, 195, 0.28), transparent 22%),
-    linear-gradient(180deg, #f3fbff 0%, #fff6d8 100%);
+    radial-gradient(circle at 14% 14%, rgba(205, 189, 255, 0.34), transparent 26%),
+    radial-gradient(circle at 86% 12%, rgba(255, 207, 227, 0.36), transparent 22%),
+    linear-gradient(180deg, #fffdfd 0%, #fff7f6 100%);
 }
 
 * {
@@ -40,8 +40,13 @@ body {
 body {
   color: var(--text);
   background:
-    radial-gradient(circle at top left, rgba(126, 203, 255, 0.34), transparent 24%),
-    linear-gradient(180deg, #f3fbff 0%, #fff6d8 100%);
+    linear-gradient(180deg, rgba(255, 255, 255, 0.72), rgba(255, 249, 247, 0.92)),
+    linear-gradient(90deg, rgba(205, 189, 255, 0.08) 1px, transparent 1px),
+    linear-gradient(rgba(205, 189, 255, 0.08) 1px, transparent 1px),
+    radial-gradient(circle at 18% 22%, rgba(255, 207, 227, 0.26), transparent 20%),
+    radial-gradient(circle at 82% 14%, rgba(191, 232, 255, 0.24), transparent 18%),
+    linear-gradient(180deg, #fffdfd 0%, #fff6f8 100%);
+  background-size: auto, 26px 26px, 26px 26px, auto, auto, auto;
 }
 
 button,
@@ -90,8 +95,8 @@ button {
   position: relative;
   overflow: hidden;
   background:
-    linear-gradient(135deg, rgba(255, 255, 255, 0.84), rgba(255, 253, 246, 0.92)),
-    linear-gradient(135deg, rgba(126, 203, 255, 0.2), rgba(255, 125, 183, 0.14));
+    radial-gradient(circle at top right, rgba(191, 232, 255, 0.42), transparent 30%),
+    linear-gradient(135deg, rgba(255, 255, 255, 0.92), rgba(255, 248, 251, 0.94));
 }
 
 .hero-card::after {
@@ -100,7 +105,7 @@ button {
   inset: auto -34px -42px auto;
   width: 190px;
   height: 190px;
-  background: linear-gradient(180deg, rgba(255, 207, 51, 0.54), rgba(126, 203, 255, 0.18));
+  background: linear-gradient(180deg, rgba(205, 189, 255, 0.44), rgba(255, 207, 227, 0.28));
   border-radius: 50%;
 }
 
@@ -112,7 +117,7 @@ button {
   width: 110px;
   height: 110px;
   border-radius: 32px;
-  background: rgba(255, 125, 183, 0.18);
+  background: rgba(255, 207, 227, 0.34);
   transform: rotate(22deg);
 }
 
@@ -121,7 +126,7 @@ button {
   font-size: 0.8rem;
   letter-spacing: 0.12em;
   text-transform: uppercase;
-  color: #ff7a30;
+  color: #8f7de0;
   font-weight: 700;
 }
 
@@ -161,12 +166,12 @@ button {
   align-items: center;
   border-radius: 999px;
   padding: 9px 14px;
-  background: rgba(255, 255, 255, 0.78);
-  color: #ff7a30;
+  background: rgba(255, 255, 255, 0.9);
+  color: #8b74f0;
   font-size: 0.82rem;
   font-weight: 700;
-  border: 1px solid rgba(255, 138, 54, 0.14);
-  box-shadow: 0 10px 18px rgba(126, 203, 255, 0.14);
+  border: 1px solid rgba(205, 189, 255, 0.28);
+  box-shadow: 0 10px 18px rgba(205, 189, 255, 0.16);
 }
 
 .onboarding-grid,
@@ -193,7 +198,7 @@ button {
   position: absolute;
   inset: 0 0 auto;
   height: 7px;
-  background: linear-gradient(90deg, var(--sky), var(--mint), var(--accent), var(--berry));
+  background: linear-gradient(90deg, var(--accent), var(--pink), var(--sky), var(--yellow));
 }
 
 .panel:nth-child(1)::after,
@@ -215,11 +220,11 @@ button {
 }
 
 .panel:nth-child(2)::after {
-  background: var(--accent);
+  background: var(--pink);
 }
 
 .panel:nth-child(3)::after {
-  background: var(--berry);
+  background: var(--accent);
 }
 
 .panel-head {
@@ -230,14 +235,14 @@ button {
   display: grid;
   gap: 8px;
   font-weight: 700;
-  color: #34507a;
+  color: #6f6488;
 }
 
 .stack-form input,
 .composer textarea {
   width: 100%;
   border-radius: 18px;
-  border: 2px solid rgba(126, 203, 255, 0.22);
+  border: 2px solid rgba(205, 189, 255, 0.28);
   background: rgba(255, 255, 255, 0.96);
   padding: 14px 16px;
   color: var(--text);
@@ -246,14 +251,14 @@ button {
 
 .stack-form input::placeholder,
 .composer textarea::placeholder {
-  color: #95a8c4;
+  color: #b3aabf;
 }
 
 .stack-form input:focus,
 .composer textarea:focus {
   outline: none;
-  border-color: rgba(255, 138, 54, 0.45);
-  box-shadow: 0 0 0 5px rgba(255, 207, 51, 0.18);
+  border-color: rgba(157, 134, 255, 0.48);
+  box-shadow: 0 0 0 5px rgba(255, 207, 227, 0.26);
 }
 
 .primary-button,
@@ -278,24 +283,32 @@ button {
 }
 
 .primary-button {
-  background: linear-gradient(180deg, #ffcf33 0%, #ff9c3b 100%);
-  color: #243250;
+  background: linear-gradient(180deg, #d6c8ff 0%, #ffcfe3 100%);
+  color: var(--text);
   font-weight: 700;
-  box-shadow: 0 14px 24px rgba(255, 156, 59, 0.28);
+  box-shadow: 0 14px 24px rgba(205, 189, 255, 0.24);
 }
 
 .secondary-button {
-  background: linear-gradient(180deg, #86d7ff 0%, #61bfff 100%);
-  color: #173356;
+  background: linear-gradient(180deg, #fffefe 0%, #fff1f7 100%);
+  color: #706585;
   font-weight: 700;
-  box-shadow: 0 14px 24px rgba(97, 191, 255, 0.22);
+  box-shadow: 0 14px 24px rgba(212, 196, 234, 0.18);
 }
 
 .ghost-button {
   background: rgba(255, 255, 255, 0.72);
-  color: #4b658b;
-  border: 1px solid rgba(126, 203, 255, 0.18);
+  color: #7a718d;
+  border: 1px solid rgba(205, 189, 255, 0.22);
   box-shadow: var(--shadow-soft);
+}
+
+.primary-button:hover,
+.secondary-button:hover,
+.ghost-button:hover,
+.icon-button:hover,
+.attach-button:hover {
+  transform: scale(1.03);
 }
 
 .compact {
@@ -309,10 +322,12 @@ button {
 .member-card,
 .invite-card {
   background: var(--panel-strong);
-  border: 1px solid rgba(126, 203, 255, 0.16);
+  border: 1px solid rgba(205, 189, 255, 0.2);
   border-radius: 24px;
   padding: 15px;
   box-shadow: var(--shadow-soft);
+  position: relative;
+  overflow: hidden;
 }
 
 .saved-profile {
@@ -347,7 +362,9 @@ button {
   min-height: 100vh;
   min-height: 100dvh;
   overflow: hidden;
-  background: linear-gradient(180deg, #9fd8ff 0%, #dff4ff 100%);
+  background:
+    radial-gradient(circle at top right, rgba(205, 189, 255, 0.22), transparent 22%),
+    linear-gradient(180deg, #fffafa 0%, #fff6f5 100%);
 }
 
 .chat-layout {
@@ -356,7 +373,9 @@ button {
   display: flex;
   flex-direction: column;
   overflow: hidden;
-  background: linear-gradient(180deg, #9fd8ff 0%, #dff4ff 100%);
+  background:
+    radial-gradient(circle at top right, rgba(205, 189, 255, 0.16), transparent 22%),
+    linear-gradient(180deg, #fffafa 0%, #fff6f5 100%);
 }
 
 .app-view > * {
@@ -374,8 +393,8 @@ button {
   transform: translateX(-105%);
   transition: transform 220ms ease;
   background:
-    radial-gradient(circle at top right, rgba(255, 125, 183, 0.16), transparent 30%),
-    linear-gradient(180deg, rgba(240, 250, 255, 0.98), rgba(255, 250, 232, 0.94)),
+    radial-gradient(circle at top right, rgba(205, 189, 255, 0.2), transparent 30%),
+    linear-gradient(180deg, rgba(255, 255, 255, 0.98), rgba(255, 247, 250, 0.96)),
     var(--panel);
 }
 
@@ -407,17 +426,17 @@ button {
   margin-top: 18px;
   padding: 14px;
   border-radius: 26px;
-  background: rgba(255, 255, 255, 0.58);
-  border: 1px solid rgba(126, 203, 255, 0.14);
+  background: rgba(255, 255, 255, 0.62);
+  border: 1px solid rgba(205, 189, 255, 0.16);
 }
 
 .family-card {
   border-radius: 28px;
   padding: 20px;
   background:
-    linear-gradient(135deg, rgba(126, 203, 255, 0.8), rgba(123, 224, 195, 0.72) 48%, rgba(255, 207, 51, 0.66));
+    linear-gradient(135deg, rgba(205, 189, 255, 0.86), rgba(255, 207, 227, 0.86) 58%, rgba(255, 232, 154, 0.7));
   border: 1px solid rgba(255, 255, 255, 0.4);
-  box-shadow: 0 18px 30px rgba(126, 203, 255, 0.22);
+  box-shadow: 0 18px 30px rgba(205, 189, 255, 0.24);
 }
 
 .family-presence {
@@ -428,10 +447,32 @@ button {
 .topbar {
   z-index: 10;
   padding: calc(8px + var(--safe-top)) 10px 8px;
-  background: linear-gradient(180deg, #9fd8ff 0%, #b9e6ff 100%);
+  background: transparent;
   flex-shrink: 0;
   gap: 10px;
-  box-shadow: 0 8px 16px rgba(91, 140, 202, 0.12);
+  box-shadow: none;
+  position: relative;
+}
+
+.topbar::before {
+  content: "";
+  position: absolute;
+  inset: calc(4px + var(--safe-top)) 10px 4px;
+  border-radius: 999px;
+  background: linear-gradient(135deg, rgba(255, 255, 255, 0.94), rgba(255, 244, 248, 0.94));
+  border: 1px solid rgba(205, 189, 255, 0.22);
+  box-shadow: 0 14px 28px rgba(205, 189, 255, 0.18);
+  z-index: -1;
+}
+
+.topbar::after {
+  content: "✦ ♡";
+  position: absolute;
+  top: calc(14px + var(--safe-top));
+  right: 86px;
+  font-size: 0.82rem;
+  color: #b39cff;
+  letter-spacing: 0.18em;
 }
 
 .topbar h2 {
@@ -443,6 +484,19 @@ button {
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+  position: relative;
+}
+
+.topbar h2::before {
+  content: "✦";
+  margin-right: 8px;
+  color: #c49cff;
+}
+
+.topbar h2::after {
+  content: "♡";
+  margin-left: 8px;
+  color: #ffb5d2;
 }
 
 .topbar .icon-button {
@@ -458,20 +512,21 @@ button {
   min-height: 34px;
   padding: 0 12px;
   border-radius: 999px;
-  background: rgba(255, 255, 255, 0.66);
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.96), rgba(255, 242, 247, 0.96));
   border: 0;
   color: var(--text);
   font-size: 0.78rem;
   font-weight: 700;
+  box-shadow: 0 10px 18px rgba(205, 189, 255, 0.18);
 }
 
 .icon-button {
   width: 44px;
   min-height: 44px;
-  background: rgba(255, 255, 255, 0.9);
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.98), rgba(255, 243, 247, 0.96));
   color: var(--text);
   font-size: 1.2rem;
-  border: 1px solid rgba(126, 203, 255, 0.18);
+  border: 1px solid rgba(205, 189, 255, 0.2);
   box-shadow: var(--shadow-soft);
 }
 
@@ -491,7 +546,13 @@ button {
   overflow-y: auto;
   overscroll-behavior: contain;
   -webkit-overflow-scrolling: touch;
-  background: #abc1d1;
+  background:
+    radial-gradient(circle at 14% 18%, rgba(205, 189, 255, 0.14), transparent 18%),
+    radial-gradient(circle at 82% 14%, rgba(255, 207, 227, 0.18), transparent 16%),
+    linear-gradient(90deg, rgba(205, 189, 255, 0.05) 1px, transparent 1px),
+    linear-gradient(rgba(205, 189, 255, 0.05) 1px, transparent 1px),
+    linear-gradient(180deg, #fffaf9 0%, #fff6f5 100%);
+  background-size: auto, auto, 24px 24px, 24px 24px, auto;
 }
 
 .empty-state {
@@ -575,30 +636,31 @@ button {
 
 .message-card {
   max-width: min(68vw, 420px);
-  border-radius: 2px 18px 18px 18px;
-  padding: 9px 12px;
+  border-radius: 24px 24px 24px 10px;
+  padding: 12px 14px;
   background: #ffffff;
-  border: 0;
-  box-shadow: none;
+  border: 2px solid rgba(205, 189, 255, 0.32);
+  box-shadow: 0 12px 20px rgba(205, 189, 255, 0.14);
 }
 
 .message-row.self .message-card {
-  border-radius: 18px 2px 18px 18px;
-  background: #fee500;
+  border-radius: 24px 24px 10px 24px;
+  background: linear-gradient(180deg, #ffd9e9 0%, #ffcfe3 100%);
+  border-color: rgba(255, 195, 220, 0.56);
   color: var(--text);
 }
 
 .message-row.continued:not(.self) .message-card {
-  border-top-left-radius: 8px;
+  border-top-left-radius: 14px;
 }
 
 .message-row.self.continued .message-card {
-  border-top-right-radius: 8px;
+  border-top-right-radius: 14px;
 }
 
 .message-row.system .message-card {
   border-radius: 999px;
-  background: rgba(255, 255, 255, 0.72);
+  background: rgba(255, 255, 255, 0.82);
   color: var(--muted);
   text-align: center;
   padding: 7px 12px;
@@ -640,8 +702,8 @@ button {
   grid-template-columns: minmax(0, 1fr) auto;
   gap: 8px;
   align-items: end;
-  background: #ffffff;
-  box-shadow: none;
+  background: rgba(255, 255, 255, 0.74);
+  box-shadow: 0 -8px 18px rgba(212, 196, 234, 0.12);
   flex-shrink: 0;
 }
 
@@ -660,10 +722,10 @@ button {
   min-height: 34px;
   padding: 0 12px;
   border-radius: 999px;
-  background: #f2f2f2;
+  background: linear-gradient(180deg, #fff6fb 0%, #fff 100%);
   color: var(--text);
   font-weight: 700;
-  border: 1px solid rgba(45, 40, 26, 0.08);
+  border: 1px solid rgba(205, 189, 255, 0.24);
   font-size: 0.82rem;
 }
 
@@ -671,19 +733,34 @@ button {
   resize: none;
   min-height: 44px;
   max-height: 132px;
-  border-radius: 22px;
+  border-radius: 999px;
   padding: 11px 14px;
   background: #ffffff;
-  border: 1px solid rgba(45, 40, 26, 0.12);
+  border: 2px solid rgba(205, 189, 255, 0.24);
 }
 
 .send-button {
-  min-width: 64px;
-  min-height: 40px;
-  padding: 0 14px;
+  min-width: 52px;
+  min-height: 52px;
+  padding: 0;
   border-radius: 999px;
-  font-size: 0.86rem;
-  box-shadow: none;
+  font-size: 0;
+  box-shadow: 0 14px 24px rgba(205, 189, 255, 0.24);
+  position: relative;
+}
+
+.send-button::before {
+  content: "✦";
+  font-size: 1.08rem;
+  color: #6f5bd3;
+}
+
+.send-button::after {
+  content: "";
+  position: absolute;
+  inset: 6px;
+  border-radius: 999px;
+  border: 1px solid rgba(255, 255, 255, 0.5);
 }
 
 .image-preview {
@@ -727,9 +804,9 @@ button {
 }
 
 .room-card.active {
-  border-color: rgba(255, 138, 54, 0.34);
-  background: linear-gradient(135deg, rgba(255, 207, 51, 0.28), rgba(255, 255, 255, 0.96));
-  box-shadow: 0 12px 22px rgba(255, 156, 59, 0.18);
+  border-color: rgba(205, 189, 255, 0.42);
+  background: linear-gradient(135deg, rgba(255, 207, 227, 0.38), rgba(255, 255, 255, 0.96));
+  box-shadow: 0 12px 22px rgba(205, 189, 255, 0.2);
 }
 
 .room-avatar,
@@ -741,7 +818,54 @@ button {
   place-items: center;
   font-weight: 800;
   color: white;
-  box-shadow: 0 10px 18px rgba(103, 149, 214, 0.22);
+  box-shadow: 0 10px 18px rgba(205, 189, 255, 0.22);
+}
+
+.room-card::before,
+.member-card::before,
+.saved-profile::before,
+.invite-card::before {
+  position: absolute;
+  top: 12px;
+  right: 14px;
+  font-size: 0.92rem;
+  opacity: 0.72;
+}
+
+.room-card:nth-child(4n + 1)::before {
+  content: "☆";
+}
+
+.room-card:nth-child(4n + 2)::before {
+  content: "🐰";
+}
+
+.room-card:nth-child(4n + 3)::before {
+  content: "🐻";
+}
+
+.room-card:nth-child(4n + 4)::before {
+  content: "♡";
+}
+
+.member-card:nth-child(3n + 1)::before {
+  content: "🐱";
+}
+
+.member-card:nth-child(3n + 2)::before {
+  content: "✦";
+}
+
+.member-card:nth-child(3n)::before {
+  content: "🦊";
+}
+
+.saved-profile::before {
+  content: "✿";
+}
+
+.invite-card::before {
+  content: "✦";
 }
 
 .room-preview {
@@ -758,11 +882,22 @@ button {
   display: grid;
   place-items: center;
   padding: 0 8px;
-  background: linear-gradient(180deg, #ff8f67 0%, #ff6f91 100%);
-  color: #fff;
+  background: linear-gradient(180deg, #ffdaea 0%, #cdbdff 100%);
+  color: #6f5bd3;
   font-size: 0.76rem;
   font-weight: 800;
-  box-shadow: 0 10px 18px rgba(255, 111, 145, 0.22);
+  box-shadow: 0 10px 18px rgba(205, 189, 255, 0.24);
+  position: relative;
+}
+
+.unread-badge::before {
+  content: "✦";
+  position: absolute;
+  top: -7px;
+  right: -4px;
+  font-size: 0.72rem;
+  color: #fff4ac;
+  animation: twinkle 1.6s ease-in-out infinite;
 }
 
 .member-card {
@@ -779,7 +914,7 @@ button {
 .invite-code {
   font-size: 1.1rem;
   letter-spacing: 0.06em;
-  color: #ff7a30;
+  color: #8b74f0;
 }
 
 .status-chip.used {
@@ -792,12 +927,25 @@ button {
   left: 50%;
   bottom: calc(24px + var(--safe-bottom));
   transform: translateX(-50%);
-  background: rgba(41, 65, 107, 0.9);
+  background: rgba(110, 97, 144, 0.92);
   color: #fffef8;
   padding: 12px 16px;
   border-radius: 999px;
   z-index: 50;
   box-shadow: var(--shadow);
+}
+
+@keyframes twinkle {
+  0%,
+  100% {
+    transform: scale(0.92);
+    opacity: 0.7;
+  }
+
+  50% {
+    transform: scale(1.15);
+    opacity: 1;
+  }
 }
 
 @media (min-width: 900px) {
