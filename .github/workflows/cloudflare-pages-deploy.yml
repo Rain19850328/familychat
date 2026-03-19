@@ -33,21 +33,9 @@ jobs:
         run: npm run build:static
 
       - name: Deploy to Cloudflare Pages
-        id: deploy
-        continue-on-error: true
         uses: cloudflare/wrangler-action@v3
         with:
           apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
           gitHubToken: ${{ secrets.GITHUB_TOKEN }}
           command: pages deploy dist --project-name=${{ vars.CLOUDFLARE_PAGES_PROJECT_NAME || github.event.repository.name }}
-
-      - name: Print Wrangler stdout
-        run: echo "${{ steps.deploy.outputs.command-output }}"
-
-      - name: Print Wrangler stderr
-        run: echo "${{ steps.deploy.outputs.command-stderr }}"
-
-      - name: Fail if deploy failed
-        if: steps.deploy.outcome != 'success'
-        run: exit 1
