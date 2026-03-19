@@ -346,15 +346,12 @@ button {
   gap: 10px;
 }
 
-.topbar-copy {
+.topbar h2 {
   flex: 1;
   min-width: 0;
-  text-align: center;
-}
-
-.topbar h2 {
   font-size: 1.02rem;
   font-weight: 700;
+  text-align: center;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -399,8 +396,8 @@ button {
   flex: 1;
   min-height: 0;
   display: grid;
-  gap: 10px;
-  padding: 14px 12px 10px;
+  gap: 8px;
+  padding: 14px 14px 10px;
   align-content: start;
   overflow-y: auto;
   overscroll-behavior: contain;
@@ -420,11 +417,15 @@ button {
 .message-row {
   justify-content: flex-start;
   align-items: flex-end;
-  gap: 8px;
+  gap: 6px;
 }
 
 .message-row.self {
   justify-content: flex-end;
+}
+
+.message-row.continued {
+  margin-top: -4px;
 }
 
 .message-row.system {
@@ -432,38 +433,48 @@ button {
 }
 
 .avatar {
-  width: 34px;
-  height: 34px;
-  border-radius: 12px;
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
   display: grid;
   place-items: center;
-  font-size: 0.82rem;
+  font-size: 0.78rem;
   font-weight: 700;
   color: rgba(255, 255, 255, 0.96);
+  flex-shrink: 0;
+  box-shadow: 0 2px 6px rgba(45, 40, 26, 0.12);
+}
+
+.avatar-spacer {
+  width: 36px;
   flex-shrink: 0;
 }
 
 .message-stack {
   display: grid;
   gap: 4px;
-  max-width: min(78vw, 460px);
+  max-width: min(76vw, 440px);
 }
 
 .message-row.self .message-stack {
   align-items: flex-end;
 }
 
+.message-row.continued .message-stack {
+  gap: 2px;
+}
+
 .message-bubble-group {
   display: flex;
   align-items: flex-end;
-  gap: 6px;
+  gap: 4px;
 }
 
 .message-side-meta {
   display: grid;
   gap: 1px;
   padding-bottom: 2px;
-  font-size: 0.68rem;
+  font-size: 0.67rem;
   line-height: 1.2;
   color: rgba(45, 40, 26, 0.56);
   white-space: nowrap;
@@ -475,17 +486,25 @@ button {
 
 .message-card {
   max-width: min(68vw, 420px);
-  border-radius: 3px 14px 14px 14px;
-  padding: 10px 12px;
+  border-radius: 2px 18px 18px 18px;
+  padding: 9px 12px;
   background: #ffffff;
   border: 0;
   box-shadow: none;
 }
 
 .message-row.self .message-card {
-  border-radius: 14px 3px 14px 14px;
+  border-radius: 18px 2px 18px 18px;
   background: #fee500;
   color: var(--text);
+}
+
+.message-row.continued:not(.self) .message-card {
+  border-top-left-radius: 8px;
+}
+
+.message-row.self.continued .message-card {
+  border-top-right-radius: 8px;
 }
 
 .message-row.system .message-card {
@@ -499,7 +518,7 @@ button {
 .message-author {
   margin: 0;
   padding-left: 2px;
-  font-size: 0.75rem;
+  font-size: 0.72rem;
   font-weight: 600;
   color: rgba(45, 40, 26, 0.74);
 }

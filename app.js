@@ -1213,13 +1213,32 @@ function renderChat(family, member, room) {
   elements.muteToggleButton.textContent = room.mutedBy?.[member.id] ? "알림 꺼짐" : "알림 켜짐";
 
   elements.messageList.innerHTML = messages.length
-    ? messages.map((message) => renderMessage(family, member, room, message)).join("")
+    ? messages.map((message, index) => renderMessage(
+      family,
+      member,
+      room,
+      message,
+      messages[index - 1],
+      messages[index + 1],
+    )).join("")
     : `<div class="empty-state">첫 메시지를 보내 가족 대화를 시작하세요.</div>`;
 
   elements.messageList.scrollTop = elements.messageList.scrollHeight;
 }
 
-function renderMessage(family, currentMember, room, message) {
+function isSameMessageGroup(leftMessage, rightMessage) {
+  if (!leftMessage || !rightMessage) {
+    return false;
+  }
+
+  if (leftMessage.type === "system" || rightMessage.type === "system") {
+    return false;
+  }
+
+  return leftMessage.senderId === rightMessage.senderId && formatTime(leftMessage.createdAt) === formatTime(rightMessage.createdAt);
+}
+
+function renderMessage(family, currentMember, room, message, previousMessage, nextMessage) {
   if (message.type === "system") {
     return `
       <div class="message-row system">
@@ -1236,7 +1255,10 @@ function renderMessage(family, currentMember, room, message) {
   const sender = findMember(family, message.senderId);
   const isSelf = message.senderId === currentMember.id;
   const readCount = Object.keys(message.readBy || {}).filter((memberId) => memberId !== currentMember.id).length;
-  const showProfile = !isSelf && room.type !== "dm";
+  const isFirstInGroup = !isSameMessageGroup(previousMessage, message);
+  const isLastInGroup = !isSameMessageGroup(message, nextMessage);
+  const showAvatarColumn = !isSelf && room.type !== "dm";
+  const showProfile = showAvatarColumn && isFirstInGroup;
   const showAuthor = showProfile;
   const timeLabel = formatTime(message.createdAt);
   const stateLabel = room.type === "family"
@@ -1244,14 +1266,15 @@ function renderMessage(family, currentMember, room, message) {
     : readCount ? "읽음" : "전달됨";
 
   return `
-    <div class="message-row ${isSelf ? "self" : ""}">
+    <div class="message-row ${isSelf ? "self" : ""} ${isFirstInGroup ? "" : "continued"}">
       ${showProfile ? `<div class="avatar" style="background:${avatarColor(sender?.name || "가족")}">${escapeHtml((sender?.name || "?").slice(0, 1))}</div>` : ""}
+      ${!showProfile && showAvatarColumn ? `<div class="avatar-spacer" aria-hidden="true"></div>` : ""}
       <div class="message-stack">
         ${showAuthor ? `<p class="message-author">${escapeHtml(sender?.name || "알 수 없음")}</p>` : ""}
         <div class="message-bubble-group">
-          ${isSelf ? `
+          ${isSelf && isLastInGroup ? `
             <div class="message-side-meta">
-              <span>${escapeHtml(stateLabel)}</span>
+              ${stateLabel ? `<span>${escapeHtml(stateLabel)}</span>` : ""}
               <span>${timeLabel}</span>
             </div>
           ` : ""}
@@ -1259,10 +1282,9 @@ function renderMessage(family, currentMember, room, message) {
             ${message.text ? `<p>${escapeHtml(message.text)}</p>` : ""}
             ${message.imageDataUrl ? `<img class="message-image" src="${message.imageDataUrl}" alt="보낸 이미지">` : ""}
           </article>
-          ${isSelf ? "" : `
+          ${isSelf || !isLastInGroup ? "" : `
             <div class="message-side-meta">
               <span>${timeLabel}</span>
-              <span>${escapeHtml(stateLabel)}</span>
             </div>
           `}
         </div>
