@@ -1,17 +1,16 @@
-name: Verify Frontend
+name: Deploy Frontend To Cloudflare
 
 on:
   push:
     branches:
       - main
-  pull_request:
   workflow_dispatch:
 
 permissions:
   contents: read
 
 jobs:
-  verify:
+  deploy:
     runs-on: ubuntu-latest
 
     steps:
@@ -28,3 +27,9 @@ jobs:
 
       - name: Build Static Artifact
         run: npm run build:static
+
+      - name: Deploy to Cloudflare Workers
+        uses: cloudflare/wrangler-action@v3
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          command: deploy
