@@ -1,14 +1,14 @@
 :root {
-  --bg: #f7efe6;
-  --panel: rgba(255, 252, 247, 0.92);
-  --panel-strong: #fffaf4;
-  --line: rgba(96, 63, 45, 0.12);
-  --text: #2e2018;
-  --muted: #80655a;
-  --accent: #f36b4f;
-  --accent-strong: #d45035;
-  --accent-soft: rgba(243, 107, 79, 0.14);
-  --shadow: 0 18px 40px rgba(92, 56, 38, 0.16);
+  --bg: #fffbe6;
+  --panel: rgba(255, 255, 255, 0.88);
+  --panel-strong: #fffef8;
+  --line: rgba(78, 66, 18, 0.1);
+  --text: #2d281a;
+  --muted: #6f6548;
+  --accent: #fee500;
+  --accent-strong: #f0d200;
+  --accent-soft: rgba(254, 229, 0, 0.22);
+  --shadow: 0 20px 40px rgba(116, 98, 18, 0.12);
   --radius-xl: 28px;
   --radius-md: 16px;
   --safe-top: env(safe-area-inset-top, 0px);
@@ -16,9 +16,9 @@
   font-family: "Pretendard Variable", "SUIT Variable", "Apple SD Gothic Neo", "Malgun Gothic", sans-serif;
   color: var(--text);
   background:
-    radial-gradient(circle at top left, rgba(243, 107, 79, 0.16), transparent 34%),
-    radial-gradient(circle at bottom right, rgba(33, 121, 116, 0.14), transparent 30%),
-    linear-gradient(180deg, #fff7ef 0%, #f5eadf 100%);
+    radial-gradient(circle at top left, rgba(254, 229, 0, 0.34), transparent 30%),
+    radial-gradient(circle at 88% 12%, rgba(255, 241, 153, 0.52), transparent 24%),
+    linear-gradient(180deg, #fffef6 0%, #fff7cf 100%);
 }
 
 * {
@@ -89,7 +89,7 @@ button {
   inset: auto -40px -48px auto;
   width: 180px;
   height: 180px;
-  background: linear-gradient(180deg, rgba(243, 107, 79, 0.16), rgba(33, 121, 116, 0.08));
+  background: linear-gradient(180deg, rgba(254, 229, 0, 0.38), rgba(255, 255, 255, 0.1));
   border-radius: 50%;
 }
 
@@ -174,8 +174,8 @@ button {
 .composer textarea {
   width: 100%;
   border-radius: 16px;
-  border: 1px solid rgba(96, 63, 45, 0.16);
-  background: rgba(255, 255, 255, 0.75);
+  border: 1px solid rgba(78, 66, 18, 0.12);
+  background: rgba(255, 255, 255, 0.96);
   padding: 14px 16px;
   color: var(--text);
 }
@@ -202,21 +202,22 @@ button {
 }
 
 .primary-button {
-  background: linear-gradient(135deg, var(--accent) 0%, var(--accent-strong) 100%);
-  color: white;
+  background: linear-gradient(180deg, #fee500 0%, #f1d600 100%);
+  color: var(--text);
   font-weight: 700;
+  box-shadow: 0 10px 20px rgba(254, 229, 0, 0.24);
 }
 
 .secondary-button {
-  background: rgba(46, 32, 24, 0.08);
+  background: rgba(255, 247, 194, 0.72);
   color: var(--text);
   font-weight: 700;
 }
 
 .ghost-button {
-  background: transparent;
+  background: rgba(255, 255, 255, 0.68);
   color: var(--muted);
-  border: 1px solid rgba(96, 63, 45, 0.16);
+  border: 1px solid rgba(78, 66, 18, 0.1);
 }
 
 .compact {
@@ -230,7 +231,7 @@ button {
 .member-card,
 .invite-card {
   background: var(--panel-strong);
-  border: 1px solid rgba(96, 63, 45, 0.1);
+  border: 1px solid rgba(78, 66, 18, 0.08);
   border-radius: 20px;
   padding: 14px;
 }
@@ -291,6 +292,9 @@ button {
   overflow-y: auto;
   transform: translateX(-105%);
   transition: transform 220ms ease;
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.96), rgba(255, 252, 228, 0.92)),
+    var(--panel);
 }
 
 .drawer.open {
@@ -301,7 +305,7 @@ button {
   position: fixed;
   inset: 0;
   z-index: 20;
-  background: rgba(25, 18, 14, 0.28);
+  background: rgba(45, 40, 26, 0.22);
 }
 
 .drawer-header,
@@ -325,7 +329,8 @@ button {
 .family-card {
   border-radius: 24px;
   padding: 18px;
-  background: linear-gradient(135deg, rgba(243, 107, 79, 0.12), rgba(33, 121, 116, 0.08));
+  background: linear-gradient(135deg, rgba(254, 229, 0, 0.3), rgba(255, 255, 255, 0.72));
+  border: 1px solid rgba(78, 66, 18, 0.08);
 }
 
 .family-presence {
@@ -336,9 +341,9 @@ button {
 .topbar {
   z-index: 10;
   padding: calc(18px + var(--safe-top)) 16px 16px;
-  background: linear-gradient(180deg, rgba(255, 250, 244, 0.95), rgba(255, 250, 244, 0.88));
+  background: linear-gradient(180deg, rgba(255, 248, 196, 0.98), rgba(255, 255, 255, 0.92));
   backdrop-filter: blur(16px);
-  border-bottom: 1px solid rgba(96, 63, 45, 0.08);
+  border-bottom: 1px solid rgba(78, 66, 18, 0.08);
   flex-shrink: 0;
 }
 
@@ -349,16 +354,17 @@ button {
 .icon-button {
   width: 44px;
   min-height: 44px;
-  background: rgba(46, 32, 24, 0.08);
+  background: rgba(255, 255, 255, 0.82);
   color: var(--text);
   font-size: 1.2rem;
+  border: 1px solid rgba(78, 66, 18, 0.08);
 }
 
 .banner,
 .chat-meta {
   padding: 12px 16px;
-  background: rgba(255, 255, 255, 0.64);
-  border-bottom: 1px solid rgba(96, 63, 45, 0.08);
+  background: rgba(255, 255, 255, 0.82);
+  border-bottom: 1px solid rgba(78, 66, 18, 0.08);
   flex-shrink: 0;
 }
 
@@ -372,6 +378,9 @@ button {
   overflow-y: auto;
   overscroll-behavior: contain;
   -webkit-overflow-scrolling: touch;
+  background:
+    radial-gradient(circle at top, rgba(255, 244, 165, 0.42), transparent 28%),
+    linear-gradient(180deg, #fffef7 0%, #fff6c8 100%);
 }
 
 .empty-state {
@@ -398,30 +407,33 @@ button {
 .avatar {
   width: 38px;
   height: 38px;
-  border-radius: 14px;
+  border-radius: 16px;
   display: grid;
   place-items: center;
   font-weight: 800;
-  color: white;
+  color: var(--text);
   flex-shrink: 0;
+  box-shadow: 0 8px 16px rgba(254, 229, 0, 0.16);
 }
 
 .message-card {
   max-width: min(78vw, 440px);
-  border-radius: 22px;
-  padding: 12px 14px;
-  background: #fff;
-  border: 1px solid rgba(96, 63, 45, 0.1);
-  box-shadow: 0 10px 22px rgba(92, 56, 38, 0.08);
+  border-radius: 24px;
+  padding: 13px 15px;
+  background: rgba(255, 255, 255, 0.96);
+  border: 1px solid rgba(78, 66, 18, 0.08);
+  box-shadow: 0 10px 22px rgba(116, 98, 18, 0.08);
 }
 
 .message-row.self .message-card {
-  background: linear-gradient(135deg, rgba(243, 107, 79, 0.92), rgba(212, 80, 53, 0.98));
-  color: white;
+  background: linear-gradient(180deg, #fee500 0%, #f2d400 100%);
+  color: var(--text);
+  border-color: rgba(222, 193, 0, 0.52);
+  box-shadow: 0 12px 26px rgba(254, 229, 0, 0.28);
 }
 
 .message-row.system .message-card {
-  background: rgba(46, 32, 24, 0.06);
+  background: rgba(255, 249, 210, 0.92);
   color: var(--muted);
   text-align: center;
 }
@@ -451,7 +463,7 @@ button {
   margin-top: 8px;
   font-size: 0.76rem;
   color: inherit;
-  opacity: 0.78;
+  opacity: 0.66;
 }
 
 .composer {
@@ -460,8 +472,8 @@ button {
   grid-template-columns: minmax(0, 1fr) auto;
   gap: 10px;
   align-items: end;
-  border-top: 1px solid rgba(96, 63, 45, 0.08);
-  background: rgba(255, 250, 244, 0.94);
+  border-top: 1px solid rgba(78, 66, 18, 0.08);
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.94), rgba(255, 249, 220, 0.98));
   flex-shrink: 0;
 }
 
@@ -478,9 +490,10 @@ button {
   width: fit-content;
   min-height: 40px;
   padding: 0 14px;
-  background: rgba(46, 32, 24, 0.08);
+  background: rgba(255, 244, 173, 0.88);
   color: var(--text);
   font-weight: 700;
+  border: 1px solid rgba(78, 66, 18, 0.08);
 }
 
 .composer textarea {
@@ -517,7 +530,7 @@ button {
   width: 28px;
   height: 28px;
   border-radius: 999px;
-  background: var(--text);
+  background: rgba(45, 40, 26, 0.92);
   color: white;
 }
 
@@ -529,8 +542,9 @@ button {
 }
 
 .room-card.active {
-  border-color: rgba(243, 107, 79, 0.34);
-  background: linear-gradient(135deg, rgba(243, 107, 79, 0.12), rgba(255, 255, 255, 0.92));
+  border-color: rgba(240, 210, 0, 0.42);
+  background: linear-gradient(135deg, rgba(254, 229, 0, 0.24), rgba(255, 255, 255, 0.96));
+  box-shadow: 0 10px 18px rgba(254, 229, 0, 0.16);
 }
 
 .room-avatar,
@@ -559,7 +573,7 @@ button {
   place-items: center;
   padding: 0 8px;
   background: var(--accent);
-  color: white;
+  color: var(--text);
   font-size: 0.76rem;
   font-weight: 800;
 }
@@ -590,8 +604,8 @@ button {
   left: 50%;
   bottom: calc(24px + var(--safe-bottom));
   transform: translateX(-50%);
-  background: rgba(46, 32, 24, 0.94);
-  color: white;
+  background: rgba(45, 40, 26, 0.92);
+  color: #fffef8;
   padding: 12px 16px;
   border-radius: 999px;
   z-index: 50;
