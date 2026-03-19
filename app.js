@@ -71,6 +71,8 @@ let familyChannel = null;
 let subscribedFamilyId = null;
 let refreshPromise = null;
 let refreshTimer = null;
+let scheduledRefreshPromise = null;
+let queuedFamilyRefresh = false;
 
 bootstrap();
 
@@ -328,6 +330,10 @@ function subscribeToFamilyChanges(familyId) {
     });
 
   familyChannel = channel.subscribe((status) => {
+    if (status === "SUBSCRIBED") {
+      void scheduleFamilyRefresh();
+    }
+
     if (status === "CHANNEL_ERROR") {
       console.error("Realtime subscription failed");
       queueLiveRefresh(1200);
@@ -350,15 +356,33 @@ function unsubscribeFamilyChanges() {
 }
 
 async function scheduleFamilyRefresh() {
-  const previousState = structuredClone(state);
-  await refreshCurrentFamily({
-    previousState,
-    notify: true,
-    persist: false,
-    skipToast: true,
-  });
-  render();
-  syncLiveRefresh();
+  queuedFamilyRefresh = true;
+
+  if (scheduledRefreshPromise) {
+    return scheduledRefreshPromise;
+  }
+
+  scheduledRefreshPromise = (async () => {
+    try {
+      while (queuedFamilyRefresh) {
+        queuedFamilyRefresh = false;
+
+        const previousState = structuredClone(state);
+        await refreshCurrentFamily({
+          previousState,
+          notify: true,
+          persist: false,
+          skipToast: true,
+        });
+        render();
+        syncLiveRefresh();
+      }
+    } finally {
+      scheduledRefreshPromise = null;
+    }
+  })();
+
+  return scheduledRefreshPromise;
 }
 
 function syncLiveRefresh() {
