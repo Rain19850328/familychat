@@ -564,12 +564,12 @@ button {
   min-height: 0;
   display: grid;
   gap: 8px;
-  padding: 14px 14px calc(16px + var(--keyboard-offset));
+  padding: 14px 14px 12px;
   align-content: start;
   overflow-y: auto;
   overscroll-behavior: contain;
   scroll-padding-top: 88px;
-  scroll-padding-bottom: calc(120px + var(--keyboard-offset));
+  scroll-padding-bottom: 20px;
   -webkit-overflow-scrolling: touch;
   background:
     radial-gradient(circle at 14% 18%, rgba(205, 189, 255, 0.14), transparent 18%),
