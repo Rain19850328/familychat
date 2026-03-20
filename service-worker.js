@@ -1,4 +1,4 @@
-const CACHE_NAME = "familychat-shell-v6";
+const CACHE_NAME = "familychat-shell-v7";
 const BACKGROUND_STATE_CACHE = "familychat-background-v1";
 const BACKGROUND_STATE_URL = "https://familychat.local/background-state";
 const BACKGROUND_SYNC_TAG = "familychat-message-check";
