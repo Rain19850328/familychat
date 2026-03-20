@@ -83,7 +83,7 @@ async function bootstrap() {
 
   if (!hasSupabaseConfig) {
     render();
-    showToast("supabase.config.js??Supabase URL�?anon key�??�력?�세??");
+    showToast("supabase.config.js??Supabase URL??anon key????낆젾??뤾쉭??");
     return;
   }
 
@@ -243,7 +243,7 @@ async function refreshCurrentFamily({
           saveState();
         }
         if (!skipToast) {
-          showToast("가�??�션??찾을 ???�습?�다.");
+          showToast("\uAC00\uC871 \uC138\uC158\uC744 \uCC3E\uC744 \uC218 \uC5C6\uC2B5\uB2C8\uB2E4.");
         }
         return null;
       }
@@ -261,7 +261,7 @@ async function refreshCurrentFamily({
           saveState();
         }
         if (!skipToast) {
-          showToast("?�?�된 ?�로?�을 ???�상 ?�용?????�습?�다.");
+          showToast("???貫留??袁⑥쨮?袁⑹뱽 ????곴맒 ?????????곷뮸??덈뼄.");
         }
         return null;
       }
@@ -294,7 +294,7 @@ async function refreshCurrentFamily({
     } catch (error) {
       console.error("Supabase sync failed", error);
       if (!skipToast) {
-        showToast(extractErrorMessage(error, "Supabase ?�기?�에 ?�패?�습?�다."));
+        showToast(extractErrorMessage(error, "Supabase ??녿┛?遺용퓠 ??쎈솭??됰뮸??덈뼄."));
       }
       return null;
     } finally {
@@ -571,7 +571,7 @@ function createRoomTitle(family, room, memberId) {
   }
 
   if (room.type === "dm") {
-    return getDirectPeer(family, room, memberId)?.name ?? "1:1 채팅";
+    return getDirectPeer(family, room, memberId)?.name ?? "1:1 \uCC44\uD305";
   }
 
   return room.title || "\uAC00\uC871 \uADF8\uB8F9\uBC29";
@@ -1196,7 +1196,7 @@ function renderInviteList(family, member) {
         <p>\uC0AC\uC6A9 \uAC00\uB2A5 \u00B7 ${formatDateTime(invite.createdAt)}</p>
         <div class="message-card-footer">
           <span class="status-chip">\uC0AC\uC6A9 \uAC00\uB2A5</span>
-          <button class="ghost-button compact" type="button" data-copy-invite="${invite.code}">복사</button>
+          <button class="ghost-button compact" type="button" data-copy-invite="${invite.code}">\uBCF5\uC0AC</button>
         </div>
       </article>
     `).join("")

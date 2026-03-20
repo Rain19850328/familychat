@@ -466,7 +466,7 @@ button {
 }
 
 .topbar::after {
-  content: "????;
+  content: "\2726 \2727";
   position: absolute;
   top: calc(14px + var(--safe-top));
   right: 86px;
@@ -488,13 +488,13 @@ button {
 }
 
 .topbar h2::before {
-  content: "??;
+  content: "\2726";
   margin-right: 8px;
   color: #c49cff;
 }
 
 .topbar h2::after {
-  content: "??;
+  content: "\2661";
   margin-left: 8px;
   color: #ffb5d2;
 }
@@ -837,39 +837,39 @@ button {
 }
 
 .room-card:nth-child(4n + 1)::before {
-  content: "??;
+  content: "\2605";
 }
 
 .room-card:nth-child(4n + 2)::before {
-  content: "?ê∞";
+  content: "\2726";
 }
 
 .room-card:nth-child(4n + 3)::before {
-  content: "?êª";
+  content: "\2665";
 }
 
 .room-card:nth-child(4n + 4)::before {
-  content: "??;
+  content: "\273F";
 }
 
 .member-card:nth-child(3n + 1)::before {
-  content: "?ê±";
+  content: "\2661";
 }
 
 .member-card:nth-child(3n + 2)::before {
-  content: "??;
+  content: "\2606";
 }
 
 .member-card:nth-child(3n)::before {
-  content: "?¶ä";
+  content: "\2727";
 }
 
 .saved-profile::before {
-  content: "??;
+  content: "\2726";
 }
 
 .invite-card::before {
-  content: "??;
+  content: "\2709";
 }
 
 .room-preview {
@@ -895,7 +895,7 @@ button {
 }
 
 .unread-badge::before {
-  content: "??;
+  content: "\2736";
   position: absolute;
   top: -7px;
   right: -4px;
