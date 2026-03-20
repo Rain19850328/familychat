@@ -762,10 +762,10 @@ button {
 }
 
 .composer {
-  padding: 10px 12px calc(10px + var(--safe-bottom) + var(--keyboard-offset));
+  padding: 8px 12px calc(8px + var(--safe-bottom) + var(--keyboard-offset));
   display: grid;
   grid-template-columns: auto minmax(0, 1fr) auto;
-  gap: 8px;
+  gap: 6px;
   align-items: end;
   background: rgba(255, 249, 246, 0.88);
   border-top: 1.5px dashed rgba(196, 173, 216, 0.72);
@@ -813,10 +813,10 @@ button {
 
 .composer textarea {
   resize: none;
-  min-height: 48px;
+  min-height: 42px;
   max-height: 132px;
   border-radius: 24px;
-  padding: 12px 16px;
+  padding: 10px 14px;
   background: rgba(255, 253, 251, 0.98);
   border: 1.5px solid var(--line);
   overflow-y: auto;
