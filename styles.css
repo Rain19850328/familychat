@@ -778,6 +778,15 @@ button {
   padding: 11px 14px;
   background: #fffdfd;
   border: 2px solid rgba(205, 189, 255, 0.24);
+  overflow-y: auto;
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+  appearance: none;
+  -webkit-appearance: none;
+}
+
+.composer textarea::-webkit-scrollbar {
+  display: none;
 }
 
 .send-button {
