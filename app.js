@@ -54,6 +54,7 @@ const elements = {
   messageList: document.getElementById("messageList"),
   composerForm: document.getElementById("composerForm"),
   messageInput: document.getElementById("messageInput"),
+  sendMessageButton: document.getElementById("sendMessageButton"),
   imageInput: document.getElementById("imageInput"),
   imagePreviewWrap: document.getElementById("imagePreviewWrap"),
   imagePreview: document.getElementById("imagePreview"),
@@ -91,6 +92,7 @@ let queuedFamilyRefresh = false;
 let serviceWorkerRegistrationPromise = null;
 let profileDraftMemberId = null;
 let profileDraft = null;
+let composerStabilizeFrame = 0;
 
 bootstrap();
 
@@ -670,6 +672,7 @@ function registerEvents() {
   elements.composerForm.addEventListener("submit", (event) => {
     void handleSendMessage(event);
   });
+  elements.sendMessageButton.addEventListener("pointerdown", handleComposerSubmitPointerDown);
   elements.imageInput.addEventListener("change", handleImageSelection);
   elements.removeImageButton.addEventListener("click", clearPendingImage);
   elements.profileForm.addEventListener("submit", (event) => {
@@ -1089,6 +1092,7 @@ async function handleSendMessage(event) {
   const member = getCurrentMember();
   const room = getActiveRoom();
   const text = elements.messageInput.value.trim();
+  const shouldKeepComposerFocused = document.activeElement === elements.messageInput;
 
   if (!family || !member || !room) {
     return;
@@ -1113,12 +1117,17 @@ async function handleSendMessage(event) {
     elements.messageInput.value = "";
     clearPendingImage();
     autoResizeComposer();
+    if (shouldKeepComposerFocused) {
+      focusComposer();
+    }
     await touchCurrentMember();
     await refreshCurrentFamily({ persist: false, skipToast: true });
     render();
+    if (shouldKeepComposerFocused) {
+      focusComposer();
+    }
     await markActiveRoomRead({ silent: true });
     broadcastRefresh();
-    focusComposer();
   } catch (error) {
     console.error("Send message failed", error);
     showToast(extractErrorMessage(error, "\uBA54\uC2DC\uC9C0 \uC804\uC1A1\uC5D0 \uC2E4\uD328\uD588\uC2B5\uB2C8\uB2E4."));
@@ -1658,6 +1667,11 @@ function autoResizeComposer() {
   elements.messageInput.style.height = `${Math.min(elements.messageInput.scrollHeight, 140)}px`;
 }
 
+function handleComposerSubmitPointerDown(event) {
+  event.preventDefault();
+  focusComposer({ syncScroll: false });
+}
+
 function handleViewportChange() {
   syncViewportInset();
   if (document.activeElement === elements.messageInput) {
@@ -1674,25 +1688,27 @@ function syncViewportInset() {
 }
 
 function ensureComposerVisible() {
-  window.setTimeout(() => {
-    elements.composerForm.scrollIntoView({
-      block: "end",
-      inline: "nearest",
-      behavior: "smooth",
+  window.cancelAnimationFrame(composerStabilizeFrame);
+  composerStabilizeFrame = window.requestAnimationFrame(() => {
+    elements.messageList.scrollTo({
+      top: elements.messageList.scrollHeight,
+      behavior: "auto",
     });
-    elements.messageList.scrollTop = elements.messageList.scrollHeight;
-  }, 80);
+  });
 }
 
-function focusComposer() {
-  window.setTimeout(() => {
+function focusComposer({ syncScroll = true } = {}) {
+  window.cancelAnimationFrame(composerStabilizeFrame);
+  composerStabilizeFrame = window.requestAnimationFrame(() => {
     elements.messageInput.focus({ preventScroll: true });
     const length = elements.messageInput.value.length;
     if (typeof elements.messageInput.setSelectionRange === "function") {
       elements.messageInput.setSelectionRange(length, length);
     }
-    ensureComposerVisible();
-  }, 40);
+    if (syncScroll) {
+      ensureComposerVisible();
+    }
+  });
 }
 
 function renderInstallButton() {

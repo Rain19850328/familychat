@@ -48,6 +48,7 @@ body {
     radial-gradient(circle at 82% 14%, rgba(191, 232, 255, 0.24), transparent 18%),
     linear-gradient(180deg, #fffdfd 0%, #fff6f8 100%);
   background-size: auto, 26px 26px, 26px 26px, auto, auto, auto;
+  overscroll-behavior-y: none;
 }
 
 button,
@@ -373,6 +374,7 @@ button {
   background:
     radial-gradient(circle at top right, rgba(205, 189, 255, 0.22), transparent 22%),
     linear-gradient(180deg, #fffafa 0%, #fff6f5 100%);
+  overscroll-behavior: none;
 }
 
 .chat-layout {
@@ -381,6 +383,8 @@ button {
   display: flex;
   flex-direction: column;
   overflow: hidden;
+  position: relative;
+  overscroll-behavior: none;
   background:
     radial-gradient(circle at top right, rgba(205, 189, 255, 0.16), transparent 22%),
     linear-gradient(180deg, #fffafa 0%, #fff6f5 100%);
@@ -469,6 +473,8 @@ button {
   box-shadow: none;
   position: sticky;
   top: 0;
+  transform: translateZ(0);
+  will-change: transform;
 }
 
 .topbar::before {
