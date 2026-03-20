@@ -1,4 +1,4 @@
-<!DOCTYPE html>
+﻿<!DOCTYPE html>
 <html lang="ko">
 <head>
   <meta charset="UTF-8">
@@ -96,13 +96,45 @@
 
         <section class="drawer-section">
           <div class="family-card">
-            <div>
-              <p class="family-role" id="currentRoleLabel">관리자</p>
-              <h3 id="currentMemberLabel">이름</h3>
-              <p class="family-presence" id="familyPresenceLabel"></p>
+            <div class="family-card-main">
+              <div class="family-avatar" id="currentMemberAvatarBadge" aria-hidden="true"></div>
+              <div>
+                <p class="family-role" id="currentRoleLabel">관리자</p>
+                <h3 id="currentMemberLabel">이름</h3>
+                <p class="family-presence" id="familyPresenceLabel"></p>
+              </div>
             </div>
             <button class="ghost-button" id="installButton" type="button">홈화면에 추가</button>
           </div>
+        </section>
+
+        <section class="drawer-section">
+          <div class="section-title-row">
+            <h3>내 프로필</h3>
+          </div>
+          <form id="profileForm" class="profile-form">
+            <input id="profileAvatarFileInput" type="file" accept="image/*" hidden>
+            <div class="profile-card">
+              <div class="profile-preview-area">
+                <div class="profile-avatar-large" id="profileAvatarPreview" aria-hidden="true"></div>
+                <button class="secondary-button compact" id="profileAvatarUploadButton" type="button">앨범에서 고르기</button>
+              </div>
+              <div class="profile-copy">
+                <strong>이름과 캐릭터를 바꿀 수 있어요.</strong>
+                <p>기본 캐릭터 5개 중 하나를 고르거나, 앨범 사진을 올릴 수 있어요.</p>
+              </div>
+            </div>
+            <label>
+              이름
+              <input id="profileNameInput" name="profileName" type="text" maxlength="20" placeholder="이름을 입력하세요" required>
+            </label>
+            <div class="section-title-row section-inline-title">
+              <h3>기본 캐릭터</h3>
+              <button class="ghost-button compact" id="profileAvatarResetButton" type="button">기본으로 되돌리기</button>
+            </div>
+            <div class="avatar-preset-grid" id="avatarPresetGrid"></div>
+            <button class="primary-button" type="submit">프로필 저장</button>
+          </form>
         </section>
 
         <section class="drawer-section">

@@ -1,0 +1,15 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" role="img" aria-label="반짝 친구 캐릭터">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#fff0b8"/>
+      <stop offset="100%" stop-color="#ffcfe3"/>
+    </linearGradient>
+  </defs>
+  <rect width="256" height="256" rx="72" fill="url(#bg)"/>
+  <path d="M128 44l23 48 53 8-38 37 9 53-47-25-47 25 9-53-38-37 53-8 23-48Z" fill="#fff7d0" stroke="#f4c95d" stroke-width="8" stroke-linejoin="round"/>
+  <circle cx="109" cy="109" r="6" fill="#4a4458"/>
+  <circle cx="147" cy="109" r="6" fill="#4a4458"/>
+  <path d="M108 133c13 10 27 10 40 0" fill="none" stroke="#d88aa1" stroke-linecap="round" stroke-width="6"/>
+  <circle cx="77" cy="67" r="8" fill="#bfe8ff"/>
+  <circle cx="183" cy="185" r="10" fill="#cdbdff"/>
+</svg>

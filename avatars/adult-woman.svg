@@ -1,0 +1,18 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" role="img" aria-label="어른 여자 캐릭터">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#ffcfe3"/>
+      <stop offset="100%" stop-color="#ffe89a"/>
+    </linearGradient>
+  </defs>
+  <rect width="256" height="256" rx="72" fill="url(#bg)"/>
+  <path d="M74 116c0-42 24-70 54-70s54 28 54 70c0 11-2 21-6 30h-96c-4-9-6-19-6-30Z" fill="#7d5fa3"/>
+  <circle cx="128" cy="108" r="49" fill="#ffe1cc"/>
+  <path d="M87 198c8-36 27-54 58-54 34 0 53 18 60 54v18H87v-18Z" fill="#cdbdff"/>
+  <circle cx="109" cy="108" r="5" fill="#4a4458"/>
+  <circle cx="147" cy="108" r="5" fill="#4a4458"/>
+  <path d="M112 129c10 9 22 9 32 0" fill="none" stroke="#c77d7d" stroke-linecap="round" stroke-width="5"/>
+  <circle cx="90" cy="135" r="7" fill="#ffb6c8" opacity=".7"/>
+  <circle cx="166" cy="135" r="7" fill="#ffb6c8" opacity=".7"/>
+  <path d="M179 60l4 10 10 4-10 4-4 10-4-10-10-4 10-4 4-10Z" fill="#fff8dc"/>
+</svg>

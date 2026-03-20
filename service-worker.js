@@ -14,6 +14,11 @@ const APP_SHELL = [
   "./icons/icon-512.png",
   "./icons/icon-192.svg",
   "./icons/icon-512.svg",
+  "./avatars/adult-man.svg",
+  "./avatars/adult-woman.svg",
+  "./avatars/boy.svg",
+  "./avatars/girl.svg",
+  "./avatars/sparkle-friend.svg",
 ];
 const NETWORK_FIRST_PATHS = [
   "/app.js",

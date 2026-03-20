@@ -11,7 +11,7 @@ const filesToCopy = [
   "service-worker.js",
   "supabase.config.js",
 ];
-const directoriesToCopy = ["icons"];
+const directoriesToCopy = ["icons", "avatars"];
 
 fs.rmSync(distDir, { recursive: true, force: true });
 fs.mkdirSync(distDir, { recursive: true });

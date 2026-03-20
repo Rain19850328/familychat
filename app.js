@@ -3,10 +3,18 @@ import { createClient } from "https://cdn.jsdelivr.net/npm/@supabase/supabase-js
 const STORAGE_KEY = "familychat.closed.pwa.v2";
 const CHANNEL_KEY = "familychat.closed.pwa.channel";
 const MAX_IMAGE_SIZE = 2 * 1024 * 1024;
+const MAX_PROFILE_IMAGE_SIZE = 1024 * 1024;
 const REALTIME_TABLES = ["families", "members", "rooms", "room_members", "invites", "messages", "message_reads"];
 const ACTIVE_REFRESH_INTERVAL_MS = 3000;
 const BACKGROUND_REFRESH_INTERVAL_MS = 12000;
 const BACKGROUND_SYNC_TAG = "familychat-message-check";
+const PRESET_AVATARS = [
+  { key: "adult-man", label: "어른 남자", src: "avatars/adult-man.svg" },
+  { key: "adult-woman", label: "어른 여자", src: "avatars/adult-woman.svg" },
+  { key: "boy", label: "아이 남자", src: "avatars/boy.svg" },
+  { key: "girl", label: "아이 여자", src: "avatars/girl.svg" },
+  { key: "sparkle-friend", label: "반짝 친구", src: "avatars/sparkle-friend.svg" },
+];
 
 const elements = {
   onboardingView: document.getElementById("onboardingView"),
@@ -23,12 +31,20 @@ const elements = {
   familyNameLabel: document.getElementById("familyNameLabel"),
   currentRoleLabel: document.getElementById("currentRoleLabel"),
   currentMemberLabel: document.getElementById("currentMemberLabel"),
+  currentMemberAvatarBadge: document.getElementById("currentMemberAvatarBadge"),
   familyPresenceLabel: document.getElementById("familyPresenceLabel"),
   roomList: document.getElementById("roomList"),
   memberList: document.getElementById("memberList"),
   inviteSection: document.getElementById("inviteSection"),
   inviteList: document.getElementById("inviteList"),
   createInviteButton: document.getElementById("createInviteButton"),
+  profileForm: document.getElementById("profileForm"),
+  profileNameInput: document.getElementById("profileNameInput"),
+  profileAvatarPreview: document.getElementById("profileAvatarPreview"),
+  profileAvatarFileInput: document.getElementById("profileAvatarFileInput"),
+  profileAvatarUploadButton: document.getElementById("profileAvatarUploadButton"),
+  profileAvatarResetButton: document.getElementById("profileAvatarResetButton"),
+  avatarPresetGrid: document.getElementById("avatarPresetGrid"),
   drawer: document.getElementById("drawer"),
   drawerScrim: document.getElementById("drawerScrim"),
   openDrawerButton: document.getElementById("openDrawerButton"),
@@ -73,6 +89,8 @@ let refreshTimer = null;
 let scheduledRefreshPromise = null;
 let queuedFamilyRefresh = false;
 let serviceWorkerRegistrationPromise = null;
+let profileDraftMemberId = null;
+let profileDraft = null;
 
 bootstrap();
 
@@ -137,6 +155,8 @@ function normalizeState() {
     familyName: profile.familyName ?? "\uAC00\uC871",
     memberName: profile.memberName ?? "\uC0AC\uC6A9\uC790",
     role: profile.role ?? "member",
+    avatarKey: profile.avatarKey ?? null,
+    avatarImageDataUrl: profile.avatarImageDataUrl ?? null,
     savedAt: profile.savedAt ?? new Date().toISOString(),
   })).filter((profile) => profile.familyId && profile.memberId);
 
@@ -149,6 +169,11 @@ function normalizeFamily(family) {
   family.invites = Array.isArray(family.invites) ? family.invites : [];
   family.messages = Array.isArray(family.messages) ? family.messages : [];
   family.settings = family.settings || { allowGroupRooms: false };
+
+  family.members.forEach((member) => {
+    member.avatarKey = member.avatarKey ?? null;
+    member.avatarImageDataUrl = member.avatarImageDataUrl ?? null;
+  });
 
   family.rooms.forEach((room) => {
     room.memberIds = Array.isArray(room.memberIds) ? room.memberIds : [];
@@ -275,6 +300,8 @@ async function refreshCurrentFamily({
         familyName: family.name,
         memberName: member.name,
         role: member.role,
+        avatarKey: member.avatarKey,
+        avatarImageDataUrl: member.avatarImageDataUrl,
       });
 
       subscribeToFamilyChanges(family.id);
@@ -500,6 +527,15 @@ async function touchMemberRemote(memberId) {
   });
 }
 
+async function updateMemberProfileRemote(memberId, name, avatarKey, avatarImageDataUrl) {
+  return rpc("app_update_member_profile", {
+    p_member_id: memberId,
+    p_name: name,
+    p_avatar_key: avatarKey ?? "",
+    p_avatar_image_data_url: avatarImageDataUrl ?? "",
+  });
+}
+
 function findFamily(familyId) {
   return state.families.find((family) => family.id === familyId);
 }
@@ -635,6 +671,16 @@ function registerEvents() {
   });
   elements.imageInput.addEventListener("change", handleImageSelection);
   elements.removeImageButton.addEventListener("click", clearPendingImage);
+  elements.profileForm.addEventListener("submit", (event) => {
+    void handleProfileSubmit(event);
+  });
+  elements.profileNameInput.addEventListener("input", handleProfileNameInput);
+  elements.profileAvatarUploadButton.addEventListener("click", () => {
+    elements.profileAvatarFileInput.click();
+  });
+  elements.profileAvatarFileInput.addEventListener("change", handleProfileAvatarSelection);
+  elements.profileAvatarResetButton.addEventListener("click", handleProfileAvatarReset);
+  elements.avatarPresetGrid.addEventListener("click", handleAvatarPresetClick);
   elements.openDrawerButton.addEventListener("click", () => setDrawer(true));
   elements.closeDrawerButton.addEventListener("click", () => setDrawer(false));
   elements.drawerScrim.addEventListener("click", () => setDrawer(false));
@@ -734,6 +780,8 @@ async function handleCreateFamily(event) {
       familyName: session.familyName,
       memberName: session.memberName,
       role: session.role,
+      avatarKey: session.avatarKey ?? null,
+      avatarImageDataUrl: session.avatarImageDataUrl ?? null,
     });
     saveState();
     await refreshCurrentFamily({ persist: false, skipToast: true });
@@ -774,6 +822,8 @@ async function handleJoinFamily(event) {
       familyName: session.familyName,
       memberName: session.memberName,
       role: session.role,
+      avatarKey: session.avatarKey ?? null,
+      avatarImageDataUrl: session.avatarImageDataUrl ?? null,
     });
     saveState();
     await refreshCurrentFamily({ persist: false, skipToast: true });
@@ -901,6 +951,121 @@ async function handleProfileClick(event) {
   render();
   await touchCurrentMember();
   await markActiveRoomRead({ silent: true });
+}
+
+function handleProfileNameInput(event) {
+  const member = getCurrentMember();
+  if (!member) {
+    return;
+  }
+
+  syncProfileDraft(member);
+  profileDraft.name = event.target.value;
+}
+
+function handleAvatarPresetClick(event) {
+  const button = event.target.closest("[data-avatar-key]");
+  const member = getCurrentMember();
+  if (!button || !member) {
+    return;
+  }
+
+  syncProfileDraft(member);
+  profileDraft.avatarKey = button.dataset.avatarKey;
+  profileDraft.avatarImageDataUrl = null;
+  elements.profileAvatarFileInput.value = "";
+  renderProfileEditor(member);
+}
+
+function handleProfileAvatarReset() {
+  const member = getCurrentMember();
+  if (!member) {
+    return;
+  }
+
+  syncProfileDraft(member);
+  profileDraft.avatarKey = null;
+  profileDraft.avatarImageDataUrl = null;
+  elements.profileAvatarFileInput.value = "";
+  renderProfileEditor(member);
+}
+
+function handleProfileAvatarSelection(event) {
+  const file = event.target.files?.[0];
+  const member = getCurrentMember();
+  if (!file || !member) {
+    return;
+  }
+
+  if (!file.type.startsWith("image/")) {
+    showToast("프로필 사진은 이미지 파일만 사용할 수 있어요.");
+    event.target.value = "";
+    return;
+  }
+
+  if (file.size > MAX_PROFILE_IMAGE_SIZE) {
+    showToast("프로필 사진은 1MB 이하로 올려 주세요.");
+    event.target.value = "";
+    return;
+  }
+
+  const reader = new FileReader();
+  reader.onload = () => {
+    syncProfileDraft(member);
+    profileDraft.avatarKey = null;
+    profileDraft.avatarImageDataUrl = reader.result;
+    renderProfileEditor(member);
+  };
+  reader.readAsDataURL(file);
+}
+
+async function handleProfileSubmit(event) {
+  event.preventDefault();
+  if (!ensureBackendReady()) {
+    return;
+  }
+
+  const family = getCurrentFamily();
+  const member = getCurrentMember();
+  if (!family || !member) {
+    return;
+  }
+
+  syncProfileDraft(member);
+  const nextName = profileDraft.name.trim();
+  if (!nextName) {
+    showToast("이름을 입력해 주세요.");
+    return;
+  }
+
+  try {
+    const updatedMember = await updateMemberProfileRemote(
+      member.id,
+      nextName,
+      profileDraft.avatarKey,
+      profileDraft.avatarImageDataUrl,
+    );
+
+    upsertDeviceProfile({
+      familyId: family.id,
+      memberId: member.id,
+      familyName: family.name,
+      memberName: updatedMember.name,
+      role: updatedMember.role,
+      avatarKey: updatedMember.avatarKey,
+      avatarImageDataUrl: updatedMember.avatarImageDataUrl,
+    });
+    saveState();
+    await refreshCurrentFamily({ persist: false, skipToast: true });
+    profileDraftMemberId = null;
+    profileDraft = null;
+    render();
+    broadcastRefresh();
+    showToast("프로필을 저장했어요.");
+  } catch (error) {
+    console.error("Update profile failed", error);
+    showToast(extractErrorMessage(error, "프로필 저장에 실패했습니다."));
+  }
 }
 
 async function handleSendMessage(event) {
@@ -1085,6 +1250,7 @@ function render() {
   renderBackendDisabledState();
 
   if (!family || !member) {
+    syncProfileDraft(null);
     elements.onboardingView.classList.remove("hidden");
     elements.appView.classList.add("hidden");
     setDrawer(false);
@@ -1106,7 +1272,9 @@ function render() {
   elements.currentMemberLabel.textContent = member.name;
   elements.familyPresenceLabel.textContent = `${family.members.length}\uBA85 \uAC00\uC871 \uADF8\uB8F9 \u00B7 \uAC00\uC871 \uC678 \uC5F0\uACB0 \uCC28\uB2E8`;
   elements.inviteSection.classList.toggle("hidden", member.role !== "admin");
+  setAvatarElement(elements.currentMemberAvatarBadge, member);
 
+  renderProfileEditor(member);
   renderRoomList(family, member, rooms);
   renderMemberList(family, member);
   renderInviteList(family, member);
@@ -1120,6 +1288,8 @@ function renderSavedProfiles() {
     familyName: profile.familyName,
     memberName: profile.memberName,
     role: profile.role,
+    avatarKey: profile.avatarKey,
+    avatarImageDataUrl: profile.avatarImageDataUrl,
   }));
 
   elements.savedProfilesPanel.classList.toggle("hidden", profiles.length === 0);
@@ -1127,6 +1297,7 @@ function renderSavedProfiles() {
   const markup = profiles.length
     ? profiles.map((profile) => `
       <button class="saved-profile" type="button" data-profile-key="${profile.key}">
+        ${renderAvatarMarkup(profile, "saved-profile-avatar")}
         <div>
           <strong>${escapeHtml(profile.memberName)}</strong>
           <p>${escapeHtml(profile.familyName)} \u00B7 ${profile.role === "admin" ? "\uAD00\uB9AC\uC790" : "\uC77C\uBC18 \uC0AC\uC6A9\uC790"}</p>
@@ -1170,7 +1341,7 @@ function renderRoomList(family, member, rooms) {
 function renderMemberList(family, currentMember) {
   elements.memberList.innerHTML = family.members.map((member) => `
     <button class="member-card" type="button" data-member-id="${member.id}">
-      <div class="member-avatar" style="background:${avatarColor(member.name)}">${escapeHtml(member.name.slice(0, 1))}</div>
+      ${renderAvatarMarkup(member, "member-avatar")}
       <div>
         <strong>${escapeHtml(member.name)}${member.id === currentMember.id ? " (\uB098)" : ""}</strong>
         <p class="room-meta">${member.role === "admin" ? "\uAD00\uB9AC\uC790" : "\uC77C\uBC18 \uC0AC\uC6A9\uC790"} \u00B7 ${escapeHtml(formatPresence(member.lastSeenAt))}</p>
@@ -1270,7 +1441,7 @@ function renderMessage(family, currentMember, room, message, previousMessage, ne
 
   return `
     <div class="message-row ${isSelf ? "self" : ""} ${isFirstInGroup ? "" : "continued"}">
-      ${showProfile ? `<div class="avatar" style="background:${avatarColor(sender?.name || "\uAC00\uC871")}">${escapeHtml((sender?.name || "?").slice(0, 1))}</div>` : ""}
+      ${showProfile ? renderAvatarMarkup(sender || { name: "?" }, "avatar") : ""}
       ${!showProfile && showAvatarColumn ? `<div class="avatar-spacer" aria-hidden="true"></div>` : ""}
       <div class="message-stack">
         ${showAuthor ? `<p class="message-author">${escapeHtml(sender?.name || "\uC774\uB984\uC5C6\uC74C")}</p>` : ""}
@@ -1324,6 +1495,113 @@ function renderBackendDisabledState() {
   [...elements.joinFamilyForm.elements].forEach((field) => {
     field.disabled = disabled;
   });
+  if (elements.profileForm) {
+    [...elements.profileForm.elements].forEach((field) => {
+      field.disabled = disabled;
+    });
+  }
+}
+
+function getPresetAvatarSrc(avatarKey) {
+  return PRESET_AVATARS.find((item) => item.key === avatarKey)?.src ?? "";
+}
+
+function getAvatarUrl(profile) {
+  return profile?.avatarImageDataUrl || getPresetAvatarSrc(profile?.avatarKey);
+}
+
+function getAvatarName(profile) {
+  return profile?.name || profile?.memberName || "\uAC00\uC871";
+}
+
+function getAvatarInitial(profile) {
+  return escapeHtml(getAvatarName(profile).slice(0, 1) || "?");
+}
+
+function renderAvatarMarkup(profile, className) {
+  const avatarUrl = getAvatarUrl(profile);
+  const avatarName = getAvatarName(profile);
+  if (avatarUrl) {
+    return `
+      <div class="${className} has-avatar-image">
+        <img class="avatar-photo" src="${escapeHtml(avatarUrl)}" alt="${escapeHtml(avatarName)}">
+      </div>
+    `;
+  }
+
+  return `
+    <div class="${className}" style="background:${avatarColor(avatarName)}">
+      ${getAvatarInitial(profile)}
+    </div>
+  `;
+}
+
+function setAvatarElement(element, profile) {
+  if (!element) {
+    return;
+  }
+
+  const avatarUrl = getAvatarUrl(profile);
+  const avatarName = getAvatarName(profile);
+  if (avatarUrl) {
+    element.classList.add("has-avatar-image");
+    element.style.background = "rgba(255, 255, 255, 0.96)";
+    element.innerHTML = `<img class="avatar-photo" src="${escapeHtml(avatarUrl)}" alt="${escapeHtml(avatarName)}">`;
+    return;
+  }
+
+  element.classList.remove("has-avatar-image");
+  element.style.background = avatarColor(avatarName);
+  element.textContent = avatarName.slice(0, 1) || "?";
+}
+
+function syncProfileDraft(member) {
+  if (!member) {
+    profileDraftMemberId = null;
+    profileDraft = null;
+    return;
+  }
+
+  if (profileDraftMemberId === member.id && profileDraft) {
+    return;
+  }
+
+  profileDraftMemberId = member.id;
+  profileDraft = {
+    name: member.name,
+    avatarKey: member.avatarKey ?? null,
+    avatarImageDataUrl: member.avatarImageDataUrl ?? null,
+  };
+}
+
+function renderProfileEditor(member) {
+  if (!member) {
+    return;
+  }
+
+  syncProfileDraft(member);
+  elements.profileNameInput.value = profileDraft.name;
+  setAvatarElement(elements.profileAvatarPreview, {
+    name: profileDraft.name || member.name,
+    avatarKey: profileDraft.avatarKey,
+    avatarImageDataUrl: profileDraft.avatarImageDataUrl,
+  });
+
+  const hasCustomAvatar = Boolean(profileDraft.avatarImageDataUrl);
+  elements.avatarPresetGrid.innerHTML = PRESET_AVATARS.map((avatar) => {
+    const selected = !hasCustomAvatar && profileDraft.avatarKey === avatar.key;
+    return `
+      <button
+        class="avatar-preset ${selected ? "selected" : ""}"
+        type="button"
+        data-avatar-key="${avatar.key}"
+        aria-pressed="${selected ? "true" : "false"}"
+      >
+        <img src="${avatar.src}" alt="${escapeHtml(avatar.label)}">
+        <span>${escapeHtml(avatar.label)}</span>
+      </button>
+    `;
+  }).join("");
 }
 
 function upsertDeviceProfile(profile) {
@@ -1332,6 +1610,8 @@ function upsertDeviceProfile(profile) {
     existing.familyName = profile.familyName;
     existing.memberName = profile.memberName;
     existing.role = profile.role;
+    existing.avatarKey = profile.avatarKey ?? null;
+    existing.avatarImageDataUrl = profile.avatarImageDataUrl ?? null;
     existing.savedAt = new Date().toISOString();
     return;
   }
@@ -1342,6 +1622,8 @@ function upsertDeviceProfile(profile) {
     familyName: profile.familyName,
     memberName: profile.memberName,
     role: profile.role,
+    avatarKey: profile.avatarKey ?? null,
+    avatarImageDataUrl: profile.avatarImageDataUrl ?? null,
     savedAt: new Date().toISOString(),
   });
 }
