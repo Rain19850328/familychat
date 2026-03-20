@@ -98,6 +98,7 @@ async function bootstrap() {
   normalizeState();
   registerEvents();
   registerServiceWorker();
+  syncViewportInset();
 
   if (!hasSupabaseConfig) {
     render();
@@ -693,6 +694,9 @@ function registerEvents() {
     void requestNotificationPermission();
   });
   elements.messageInput.addEventListener("input", autoResizeComposer);
+  elements.messageInput.addEventListener("focus", () => {
+    ensureComposerVisible();
+  });
 
   window.addEventListener("storage", (event) => {
     if (event.key === STORAGE_KEY) {
@@ -751,6 +755,13 @@ function registerEvents() {
     queueLiveRefresh(1000);
     void syncServiceWorkerState();
   });
+
+  if (window.visualViewport) {
+    window.visualViewport.addEventListener("resize", handleViewportChange);
+    window.visualViewport.addEventListener("scroll", handleViewportChange);
+  } else {
+    window.addEventListener("resize", handleViewportChange);
+  }
 }
 
 async function handleCreateFamily(event) {
@@ -1647,6 +1658,32 @@ function autoResizeComposer() {
   elements.messageInput.style.height = `${Math.min(elements.messageInput.scrollHeight, 140)}px`;
 }
 
+function handleViewportChange() {
+  syncViewportInset();
+  if (document.activeElement === elements.messageInput) {
+    ensureComposerVisible();
+  }
+}
+
+function syncViewportInset() {
+  const viewport = window.visualViewport;
+  const keyboardOffset = viewport
+    ? Math.max(0, window.innerHeight - (viewport.height + viewport.offsetTop))
+    : 0;
+  document.documentElement.style.setProperty("--keyboard-offset", `${Math.round(keyboardOffset)}px`);
+}
+
+function ensureComposerVisible() {
+  window.setTimeout(() => {
+    elements.composerForm.scrollIntoView({
+      block: "end",
+      inline: "nearest",
+      behavior: "smooth",
+    });
+    elements.messageList.scrollTop = elements.messageList.scrollHeight;
+  }, 80);
+}
+
 function focusComposer() {
   window.setTimeout(() => {
     elements.messageInput.focus({ preventScroll: true });
@@ -1654,6 +1691,7 @@ function focusComposer() {
     if (typeof elements.messageInput.setSelectionRange === "function") {
       elements.messageInput.setSelectionRange(length, length);
     }
+    ensureComposerVisible();
   }, 40);
 }
 

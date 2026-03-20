@@ -18,6 +18,7 @@
   --radius-md: 20px;
   --safe-top: env(safe-area-inset-top, 0px);
   --safe-bottom: env(safe-area-inset-bottom, 0px);
+  --keyboard-offset: 0px;
   font-family: "Pretendard Variable", "SUIT Variable", "Apple SD Gothic Neo", "Malgun Gothic", sans-serif;
   color: var(--text);
   background:
@@ -466,7 +467,8 @@ button {
   flex-shrink: 0;
   gap: 10px;
   box-shadow: none;
-  position: relative;
+  position: sticky;
+  top: 0;
 }
 
 .topbar::before {
@@ -556,10 +558,12 @@ button {
   min-height: 0;
   display: grid;
   gap: 8px;
-  padding: 14px 14px 10px;
+  padding: 14px 14px calc(16px + var(--keyboard-offset));
   align-content: start;
   overflow-y: auto;
   overscroll-behavior: contain;
+  scroll-padding-top: 88px;
+  scroll-padding-bottom: calc(120px + var(--keyboard-offset));
   -webkit-overflow-scrolling: touch;
   background:
     radial-gradient(circle at 14% 18%, rgba(205, 189, 255, 0.14), transparent 18%),
@@ -712,14 +716,17 @@ button {
 }
 
 .composer {
-  padding: 8px 10px calc(8px + var(--safe-bottom));
+  padding: 8px 10px calc(8px + var(--safe-bottom) + var(--keyboard-offset));
   display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
+  grid-template-columns: auto minmax(0, 1fr) auto;
   gap: 8px;
   align-items: end;
   background: rgba(255, 255, 255, 0.74);
   box-shadow: 0 -8px 18px rgba(212, 196, 234, 0.12);
   flex-shrink: 0;
+  position: sticky;
+  bottom: 0;
+  z-index: 12;
 }
 
 .composer-main {
@@ -742,6 +749,19 @@ button {
   font-weight: 700;
   border: 1px solid rgba(205, 189, 255, 0.24);
   font-size: 0.82rem;
+}
+
+.attach-button-round {
+  width: 48px;
+  min-width: 48px;
+  min-height: 48px;
+  padding: 0;
+  border-radius: 999px;
+  align-self: end;
+  font-size: 1.5rem;
+  line-height: 1;
+  background: linear-gradient(180deg, #fff7fc 0%, #ffffff 100%);
+  box-shadow: 0 12px 20px rgba(205, 189, 255, 0.2);
 }
 
 .composer textarea {
