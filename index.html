@@ -111,30 +111,17 @@
         <section class="drawer-section">
           <div class="section-title-row">
             <h3>내 프로필</h3>
+            <button class="primary-button compact" id="openProfileButton" type="button">수정하기</button>
           </div>
-          <form id="profileForm" class="profile-form">
-            <input id="profileAvatarFileInput" type="file" accept="image/*" hidden>
-            <div class="profile-card">
-              <div class="profile-preview-area">
-                <div class="profile-avatar-large" id="profileAvatarPreview" aria-hidden="true"></div>
-                <button class="secondary-button compact" id="profileAvatarUploadButton" type="button">앨범에서 고르기</button>
-              </div>
-              <div class="profile-copy">
-                <strong>이름과 캐릭터를 바꿀 수 있어요.</strong>
-                <p>기본 캐릭터 5개 중 하나를 고르거나, 앨범 사진을 올릴 수 있어요.</p>
+          <div class="profile-summary-card">
+            <div class="profile-summary-main">
+              <div class="profile-avatar-large" id="profileSummaryAvatar" aria-hidden="true"></div>
+              <div class="profile-summary-copy">
+                <strong id="profileSummaryName">아이디</strong>
+                <p>사진과 아이디만 표시됩니다.</p>
               </div>
             </div>
-            <label>
-              이름
-              <input id="profileNameInput" name="profileName" type="text" maxlength="20" placeholder="이름을 입력하세요" required>
-            </label>
-            <div class="section-title-row section-inline-title">
-              <h3>기본 캐릭터</h3>
-              <button class="ghost-button compact" id="profileAvatarResetButton" type="button">기본으로 되돌리기</button>
-            </div>
-            <div class="avatar-preset-grid" id="avatarPresetGrid"></div>
-            <button class="primary-button" type="submit">프로필 저장</button>
-          </form>
+          </div>
         </section>
 
         <section class="drawer-section">
@@ -205,6 +192,42 @@
           <button class="primary-button send-button" id="sendMessageButton" type="submit" aria-label="메시지 전송">전송</button>
         </form>
       </main>
+    </section>
+  </div>
+
+  <div class="modal-layer hidden" id="profileModal">
+    <button class="modal-scrim" id="profileModalScrim" type="button" aria-label="프로필 수정 닫기"></button>
+    <section class="profile-modal" aria-modal="true" role="dialog" aria-labelledby="profileModalTitle">
+      <div class="drawer-header profile-modal-header">
+        <div>
+          <p class="eyebrow">Profile Edit</p>
+          <h2 id="profileModalTitle">프로필 수정</h2>
+        </div>
+        <button class="icon-button" id="closeProfileModalButton" type="button" aria-label="프로필 수정 닫기">&times;</button>
+      </div>
+      <form id="profileForm" class="profile-form">
+        <input id="profileAvatarFileInput" type="file" accept="image/*" hidden>
+        <div class="profile-card">
+          <div class="profile-preview-area">
+            <div class="profile-avatar-large" id="profileAvatarPreview" aria-hidden="true"></div>
+            <button class="secondary-button compact" id="profileAvatarUploadButton" type="button">앨범에서 고르기</button>
+          </div>
+          <div class="profile-copy">
+            <strong>사진과 아이디를 여기서 바꿉니다.</strong>
+            <p>기본 캐릭터를 고르거나 직접 올린 사진으로 프로필을 바꿀 수 있습니다.</p>
+          </div>
+        </div>
+        <label>
+          아이디
+          <input id="profileNameInput" name="profileName" type="text" maxlength="20" placeholder="아이디를 입력하세요" required>
+        </label>
+        <div class="section-title-row section-inline-title">
+          <h3>기본 캐릭터</h3>
+          <button class="ghost-button compact" id="profileAvatarResetButton" type="button">기본으로 되돌리기</button>
+        </div>
+        <div class="avatar-preset-grid" id="avatarPresetGrid"></div>
+        <button class="primary-button" type="submit">프로필 저장</button>
+      </form>
     </section>
   </div>
 

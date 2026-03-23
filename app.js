@@ -38,6 +38,9 @@ const elements = {
   inviteSection: document.getElementById("inviteSection"),
   inviteList: document.getElementById("inviteList"),
   createInviteButton: document.getElementById("createInviteButton"),
+  openProfileButton: document.getElementById("openProfileButton"),
+  profileSummaryAvatar: document.getElementById("profileSummaryAvatar"),
+  profileSummaryName: document.getElementById("profileSummaryName"),
   profileForm: document.getElementById("profileForm"),
   profileNameInput: document.getElementById("profileNameInput"),
   profileAvatarPreview: document.getElementById("profileAvatarPreview"),
@@ -45,6 +48,9 @@ const elements = {
   profileAvatarUploadButton: document.getElementById("profileAvatarUploadButton"),
   profileAvatarResetButton: document.getElementById("profileAvatarResetButton"),
   avatarPresetGrid: document.getElementById("avatarPresetGrid"),
+  profileModal: document.getElementById("profileModal"),
+  profileModalScrim: document.getElementById("profileModalScrim"),
+  closeProfileModalButton: document.getElementById("closeProfileModalButton"),
   drawer: document.getElementById("drawer"),
   drawerScrim: document.getElementById("drawerScrim"),
   openDrawerButton: document.getElementById("openDrawerButton"),
@@ -92,6 +98,7 @@ let queuedFamilyRefresh = false;
 let serviceWorkerRegistrationPromise = null;
 let profileDraftMemberId = null;
 let profileDraft = null;
+let profileModalOpen = false;
 let composerStabilizeFrame = 0;
 
 bootstrap();
@@ -539,6 +546,14 @@ async function updateMemberProfileRemote(memberId, name, avatarKey, avatarImageD
   });
 }
 
+async function removeMemberRemote(familyId, adminMemberId, targetMemberId) {
+  return rpc("app_remove_member", {
+    p_family_id: familyId,
+    p_admin_member_id: adminMemberId,
+    p_target_member_id: targetMemberId,
+  });
+}
+
 function findFamily(familyId) {
   return state.families.find((family) => family.id === familyId);
 }
@@ -646,6 +661,17 @@ function getRoomPreview(family, room) {
   return message.text;
 }
 
+function renderRoomAvatarMarkup(family, room, memberId, title) {
+  if (room.type === "dm") {
+    const peer = getDirectPeer(family, room, memberId);
+    if (peer) {
+      return renderAvatarMarkup(peer, "room-avatar");
+    }
+  }
+
+  return `<div class="room-avatar room-avatar-family" style="background:${avatarColor(title)}">${escapeHtml(title.slice(0, 1))}</div>`;
+}
+
 function registerEvents() {
   elements.createFamilyForm.addEventListener("submit", (event) => {
     void handleCreateFamily(event);
@@ -675,6 +701,7 @@ function registerEvents() {
   elements.sendMessageButton.addEventListener("pointerdown", handleComposerSubmitPointerDown);
   elements.imageInput.addEventListener("change", handleImageSelection);
   elements.removeImageButton.addEventListener("click", clearPendingImage);
+  elements.openProfileButton.addEventListener("click", openProfileModal);
   elements.profileForm.addEventListener("submit", (event) => {
     void handleProfileSubmit(event);
   });
@@ -685,6 +712,8 @@ function registerEvents() {
   elements.profileAvatarFileInput.addEventListener("change", handleProfileAvatarSelection);
   elements.profileAvatarResetButton.addEventListener("click", handleProfileAvatarReset);
   elements.avatarPresetGrid.addEventListener("click", handleAvatarPresetClick);
+  elements.profileModalScrim.addEventListener("click", () => setProfileModal(false));
+  elements.closeProfileModalButton.addEventListener("click", () => setProfileModal(false));
   elements.openDrawerButton.addEventListener("click", () => setDrawer(true));
   elements.closeDrawerButton.addEventListener("click", () => setDrawer(false));
   elements.drawerScrim.addEventListener("click", () => setDrawer(false));
@@ -765,6 +794,12 @@ function registerEvents() {
   } else {
     window.addEventListener("resize", handleViewportChange);
   }
+
+  window.addEventListener("keydown", (event) => {
+    if (event.key === "Escape" && profileModalOpen) {
+      setProfileModal(false);
+    }
+  });
 }
 
 async function handleCreateFamily(event) {
@@ -903,15 +938,25 @@ async function handleMemberClick(event) {
     return;
   }
 
-  const button = event.target.closest("[data-member-id]");
   const family = getCurrentFamily();
   const currentMember = getCurrentMember();
 
-  if (!button || !family || !currentMember) {
+  if (!family || !currentMember) {
     return;
   }
 
-  const targetId = button.dataset.memberId;
+  const removeButton = event.target.closest("[data-remove-member]");
+  if (removeButton) {
+    await handleRemoveMember(removeButton.dataset.removeMember);
+    return;
+  }
+
+  const chatButton = event.target.closest("[data-open-dm-member]");
+  if (!chatButton) {
+    return;
+  }
+
+  const targetId = chatButton.dataset.openDmMember;
   if (targetId === currentMember.id) {
     showToast("\uD604\uC7AC \uC0AC\uC6A9\uC790\uC785\uB2C8\uB2E4.");
     return;
@@ -932,6 +977,45 @@ async function handleMemberClick(event) {
   }
 }
 
+async function handleRemoveMember(targetId) {
+  const family = getCurrentFamily();
+  const currentMember = getCurrentMember();
+  const targetMember = family ? findMember(family, targetId) : null;
+
+  if (!family || !currentMember || currentMember.role !== "admin" || !targetMember) {
+    showToast("\uAD00\uB9AC\uC790\uB9CC \uAC00\uC871 \uAD6C\uC131\uC6D0\uC744 \uD0C8\uD1F4\uC2DC\uD0AC \uC218 \uC788\uC2B5\uB2C8\uB2E4.");
+    return;
+  }
+
+  if (targetMember.id === currentMember.id) {
+    showToast("\uBC29\uC7A5 \uC790\uC2E0\uC740 \uD0C8\uD1F4 \uCC98\uB9AC\uD560 \uC218 \uC5C6\uC2B5\uB2C8\uB2E4.");
+    return;
+  }
+
+  if (targetMember.role === "admin") {
+    showToast("\uBC29\uC7A5\uC740 \uAC15\uD1F4 \uB300\uC0C1\uC774 \uC544\uB2D9\uB2C8\uB2E4.");
+    return;
+  }
+
+  const confirmed = window.confirm(`${targetMember.name}\uB2D8\uC744 \uAC00\uC871\uC5D0\uC11C \uD0C8\uD1F4\uC2DC\uD0AC\uAE4C\uC694?`);
+  if (!confirmed) {
+    return;
+  }
+
+  try {
+    await removeMemberRemote(family.id, currentMember.id, targetMember.id);
+    removeDeviceProfile(family.id, targetMember.id);
+    saveState();
+    await refreshCurrentFamily({ persist: false, skipToast: true });
+    render();
+    broadcastRefresh();
+    showToast(`${targetMember.name}\uB2D8\uC744 \uD0C8\uD1F4\uCC98\uB9AC\uD588\uC2B5\uB2C8\uB2E4.`);
+  } catch (error) {
+    console.error("Remove member failed", error);
+    showToast(extractErrorMessage(error, "\uAD6C\uC131\uC6D0 \uD0C8\uD1F4 \uCC98\uB9AC\uC5D0 \uC2E4\uD328\uD588\uC2B5\uB2C8\uB2E4."));
+  }
+}
+
 async function handleProfileClick(event) {
   if (!ensureBackendReady()) {
     return;
@@ -941,6 +1025,8 @@ async function handleProfileClick(event) {
   if (!button) {
     return;
   }
+
+  setProfileModal(false);
 
   const profile = getSavedProfile(button.dataset.profileKey);
   if (!profile) {
@@ -965,6 +1051,20 @@ async function handleProfileClick(event) {
   render();
   await touchCurrentMember();
   await markActiveRoomRead({ silent: true });
+}
+
+function openProfileModal() {
+  const member = getCurrentMember();
+  if (!member) {
+    return;
+  }
+
+  syncProfileDraft(member);
+  renderProfileEditor(member);
+  if (window.innerWidth < 900) {
+    setDrawer(false);
+  }
+  setProfileModal(true);
 }
 
 function handleProfileNameInput(event) {
@@ -1073,6 +1173,7 @@ async function handleProfileSubmit(event) {
     await refreshCurrentFamily({ persist: false, skipToast: true });
     profileDraftMemberId = null;
     profileDraft = null;
+    setProfileModal(false, { resetDraft: false });
     render();
     broadcastRefresh();
     showToast("프로필을 저장했어요.");
@@ -1165,6 +1266,7 @@ function handleImageSelection(event) {
 }
 
 function handleLogout() {
+  setProfileModal(false);
   state.currentSession = null;
   state.families = [];
   unsubscribeFamilyChanges();
@@ -1271,6 +1373,7 @@ function render() {
 
   if (!family || !member) {
     syncProfileDraft(null);
+    setProfileModal(false);
     elements.onboardingView.classList.remove("hidden");
     elements.appView.classList.add("hidden");
     setDrawer(false);
@@ -1294,12 +1397,18 @@ function render() {
   elements.inviteSection.classList.toggle("hidden", member.role !== "admin");
   setAvatarElement(elements.currentMemberAvatarBadge, member);
 
+  renderProfileSummary(member);
   renderProfileEditor(member);
   renderRoomList(family, member, rooms);
   renderMemberList(family, member);
   renderInviteList(family, member);
   renderChat(family, member, activeRoom);
   renderInstallButton();
+}
+
+function renderProfileSummary(member) {
+  setAvatarElement(elements.profileSummaryAvatar, member);
+  elements.profileSummaryName.textContent = member.name;
 }
 
 function renderSavedProfiles() {
@@ -1339,13 +1448,15 @@ function renderRoomList(family, member, rooms) {
     const subtitle = createRoomSubtitle(family, room, member.id);
     const preview = getRoomPreview(family, room);
     const muted = Boolean(room.mutedBy?.[member.id]);
+    const typeLabel = room.type === "family" ? "\uAC00\uC871 \uC804\uCCB4\uBC29" : room.type === "dm" ? "1:1 \uB300\uD654" : "\uADF8\uB8F9 \uCC44\uD305";
 
     return `
-      <button class="room-card ${active ? "active" : ""}" type="button" data-room-id="${room.id}">
+      <button class="room-card room-card-${room.type} ${active ? "active" : ""}" type="button" data-room-id="${room.id}">
         <div class="room-head">
           <div class="room-main">
-            <div class="room-avatar" style="background:${avatarColor(title)}">${escapeHtml(title.slice(0, 1))}</div>
-            <div>
+            ${renderRoomAvatarMarkup(family, room, member.id, title)}
+            <div class="room-copy">
+              <p class="room-kind">${typeLabel}</p>
               <strong class="room-title">${escapeHtml(title)}</strong>
               <p class="room-meta">${escapeHtml(subtitle)}</p>
             </div>
@@ -1359,15 +1470,24 @@ function renderRoomList(family, member, rooms) {
 }
 
 function renderMemberList(family, currentMember) {
-  elements.memberList.innerHTML = family.members.map((member) => `
-    <button class="member-card" type="button" data-member-id="${member.id}">
-      ${renderAvatarMarkup(member, "member-avatar")}
-      <div>
-        <strong>${escapeHtml(member.name)}${member.id === currentMember.id ? " (\uB098)" : ""}</strong>
-        <p class="room-meta">${member.role === "admin" ? "\uAD00\uB9AC\uC790" : "\uC77C\uBC18 \uC0AC\uC6A9\uC790"} \u00B7 ${escapeHtml(formatPresence(member.lastSeenAt))}</p>
-      </div>
-    </button>
-  `).join("");
+  elements.memberList.innerHTML = family.members.map((member) => {
+    const isSelf = member.id === currentMember.id;
+    const canRemove = currentMember.role === "admin" && member.role !== "admin" && !isSelf;
+    return `
+      <article class="member-card ${isSelf ? "self" : ""}">
+        <div class="member-card-main">
+          ${renderAvatarMarkup(member, "member-avatar")}
+          <div class="member-copy">
+            <strong>${escapeHtml(member.name)}</strong>
+          </div>
+        </div>
+        <div class="member-actions">
+          ${isSelf ? `<span class="status-chip member-self-chip">\uB098</span>` : `<button class="ghost-button compact member-action-button" type="button" data-open-dm-member="${member.id}">\uB300\uD654</button>`}
+          ${canRemove ? `<button class="secondary-button compact member-action-button member-remove-button" type="button" data-remove-member="${member.id}">\uD0C8\uD1F4</button>` : ""}
+        </div>
+      </article>
+    `;
+  }).join("");
 }
 
 function renderInviteList(family, member) {
@@ -1520,6 +1640,7 @@ function renderBackendDisabledState() {
       field.disabled = disabled;
     });
   }
+  elements.openProfileButton.disabled = disabled;
 }
 
 function getPresetAvatarSrc(avatarKey) {
@@ -1660,6 +1781,27 @@ function getSavedProfile(profileKey) {
 function setDrawer(open) {
   elements.drawer.classList.toggle("open", open);
   elements.drawerScrim.classList.toggle("hidden", !open || window.innerWidth >= 900);
+}
+
+function setProfileModal(open, { resetDraft = true } = {}) {
+  profileModalOpen = open;
+  elements.profileModal.classList.toggle("hidden", !open);
+  document.body.classList.toggle("modal-open", open);
+
+  if (open) {
+    window.requestAnimationFrame(() => {
+      elements.profileNameInput.focus({ preventScroll: true });
+      elements.profileNameInput.select();
+    });
+  }
+
+  if (!open) {
+    elements.profileAvatarFileInput.value = "";
+  }
+
+  if (!open && resetDraft) {
+    syncProfileDraft(null);
+  }
 }
 
 function autoResizeComposer() {
