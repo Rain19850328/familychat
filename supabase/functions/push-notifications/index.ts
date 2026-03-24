@@ -158,7 +158,7 @@ async function ensureVapidConfig(supabase: ReturnType<typeof createClient>, supa
     };
   }
 
-  const vapidKeys = await generateVapidKeys();
+  const vapidKeys = await generateVapidKeys({ extractable: true });
   const exported = await exportVapidKeys(vapidKeys);
   const subject = new URL(supabaseUrl).origin;
   const { error: upsertError } = await supabase
