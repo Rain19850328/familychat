@@ -129,7 +129,7 @@ Deno.serve(async (request) => {
   } catch (error) {
     console.error("Push notifications function failed", error);
     return jsonResponse({
-      error: error instanceof Error ? error.message : String(error),
+      error: serializeError(error),
     }, 500);
   }
 });
@@ -198,4 +198,20 @@ function jsonResponse(payload: unknown, status = 200) {
     status,
     headers: corsHeaders,
   });
+}
+
+function serializeError(error: unknown) {
+  if (error instanceof Error) {
+    return {
+      name: error.name,
+      message: error.message,
+      stack: error.stack,
+    };
+  }
+
+  try {
+    return JSON.parse(JSON.stringify(error));
+  } catch {
+    return String(error);
+  }
 }
