@@ -2,6 +2,7 @@ const CACHE_NAME = "familychat-shell-v7";
 const BACKGROUND_STATE_CACHE = "familychat-background-v1";
 const BACKGROUND_STATE_URL = "https://familychat.local/background-state";
 const BACKGROUND_SYNC_TAG = "familychat-message-check";
+const PUSH_FUNCTION_PATH = "/functions/v1/push-notifications";
 const APP_SHELL = [
   "./",
   "./index.html",
@@ -113,9 +114,14 @@ self.addEventListener("push", (event) => {
       icon: "./icons/icon-192.png",
       badge: "./icons/icon-192.png",
       tag: payload.tag,
+      renotify: Boolean(payload.tag),
       data: payload.data,
     });
   })());
+});
+
+self.addEventListener("pushsubscriptionchange", (event) => {
+  event.waitUntil(handlePushSubscriptionChange(event));
 });
 
 self.addEventListener("notificationclick", (event) => {
@@ -151,6 +157,42 @@ async function syncBackgroundState(payload) {
     notificationPermission: payload.notificationPermission ?? "default",
     lastMessageByRoom: payload.lastMessageByRoom ?? currentState?.lastMessageByRoom ?? {},
   });
+}
+
+async function handlePushSubscriptionChange(event) {
+  const state = await readBackgroundState();
+  if (!state?.config?.url || !state?.config?.anonKey || !state?.session?.memberId) {
+    await notifyPushStatusChanged();
+    return;
+  }
+
+  try {
+    const publicKey = event.oldSubscription?.options?.applicationServerKey
+      ? null
+      : await fetchPushPublicKey(state.config);
+    const subscribeOptions = event.oldSubscription?.options ?? {
+      userVisibleOnly: true,
+      applicationServerKey: urlBase64ToUint8Array(publicKey),
+    };
+    const subscription = event.newSubscription
+      ?? await self.registration.pushManager.getSubscription()
+      ?? await self.registration.pushManager.subscribe(subscribeOptions);
+    const serialized = subscription.toJSON();
+
+    if (!serialized.endpoint || !serialized.keys?.p256dh || !serialized.keys?.auth) {
+      throw new Error("Push subscription is incomplete.");
+    }
+
+    if (event.oldSubscription?.endpoint) {
+      await removePushSubscriptionRemote(state.config, state.session.memberId, event.oldSubscription.endpoint);
+    }
+
+    await upsertPushSubscriptionRemote(state.config, state.session.memberId, serialized);
+  } catch (error) {
+    console.error("Push subscription refresh failed", error);
+  }
+
+  await notifyPushStatusChanged();
 }
 
 function parsePushPayload(event) {
@@ -249,6 +291,7 @@ async function checkForBackgroundMessages() {
       icon: "./icons/icon-192.png",
       badge: "./icons/icon-192.png",
       tag: `${state.session.familyId}:${room.id}`,
+      renotify: true,
       data: {
         familyId: state.session.familyId,
         roomId: room.id,
@@ -263,6 +306,83 @@ async function checkForBackgroundMessages() {
     }]),
   );
   await writeBackgroundState(state);
+}
+
+async function fetchPushPublicKey(config) {
+  const response = await fetch(`${config.url}${PUSH_FUNCTION_PATH}`, {
+    method: "GET",
+    headers: createSupabaseHeaders(config.anonKey),
+  });
+
+  if (!response.ok) {
+    throw new Error("Failed to load push public key.");
+  }
+
+  const payload = await response.json();
+  if (!payload?.publicKey) {
+    throw new Error("Push public key is missing.");
+  }
+
+  return payload.publicKey;
+}
+
+async function upsertPushSubscriptionRemote(config, memberId, subscription) {
+  const response = await fetch(`${config.url}/rest/v1/rpc/app_upsert_push_subscription`, {
+    method: "POST",
+    headers: createSupabaseHeaders(config.anonKey),
+    body: JSON.stringify({
+      p_member_id: memberId,
+      p_endpoint: subscription.endpoint,
+      p_p256dh: subscription.keys.p256dh,
+      p_auth: subscription.keys.auth,
+      p_user_agent: self.navigator?.userAgent ?? "service-worker",
+    }),
+  });
+
+  if (!response.ok) {
+    throw new Error("Failed to store push subscription.");
+  }
+}
+
+async function removePushSubscriptionRemote(config, memberId, endpoint) {
+  const response = await fetch(`${config.url}/rest/v1/rpc/app_remove_push_subscription`, {
+    method: "POST",
+    headers: createSupabaseHeaders(config.anonKey),
+    body: JSON.stringify({
+      p_member_id: memberId,
+      p_endpoint: endpoint ?? null,
+    }),
+  });
+
+  if (!response.ok) {
+    throw new Error("Failed to remove push subscription.");
+  }
+}
+
+function createSupabaseHeaders(anonKey) {
+  return {
+    "Content-Type": "application/json",
+    Authorization: `Bearer ${anonKey}`,
+    apikey: anonKey,
+  };
+}
+
+function urlBase64ToUint8Array(value) {
+  const padding = "=".repeat((4 - (value.length % 4)) % 4);
+  const base64 = (value + padding).replaceAll("-", "+").replaceAll("_", "/");
+  const raw = atob(base64);
+  return Uint8Array.from(raw, (character) => character.charCodeAt(0));
+}
+
+async function notifyPushStatusChanged() {
+  const windowClients = await clients.matchAll({
+    type: "window",
+    includeUncontrolled: true,
+  });
+
+  windowClients.forEach((client) => {
+    client.postMessage({ type: "PUSH_SUBSCRIPTION_UPDATED" });
+  });
 }
 
 async function fetchFamilySnapshot(config, familyId) {

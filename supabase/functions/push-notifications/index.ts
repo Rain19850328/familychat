@@ -101,8 +101,7 @@ Deno.serve(async (request) => {
           data: delivery.data,
         }), {
           urgency: Urgency.High,
-          topic: delivery.tag,
-          ttl: 60,
+          ttl: 60 * 60 * 24,
         });
         sent += 1;
       } catch (error) {

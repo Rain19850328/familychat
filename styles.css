@@ -541,6 +541,13 @@ button {
   padding-inline: 16px;
 }
 
+.settings-note {
+  margin: 2px 4px 0;
+  color: var(--muted);
+  font-size: 0.88rem;
+  line-height: 1.45;
+}
+
 .topbar {
   z-index: 10;
   padding: calc(10px + var(--safe-top)) 12px 10px;
@@ -735,7 +742,7 @@ button {
 
 .message-card {
   max-width: min(68vw, 420px);
-  border-radius: 20px 20px 20px 10px;
+  border-radius: 16px 16px 16px 8px;
   padding: 12px 14px;
   background: rgba(255, 254, 252, 0.98);
   border: 1.5px dashed var(--stitch);
@@ -743,7 +750,7 @@ button {
 }
 
 .message-row.self .message-card {
-  border-radius: 20px 20px 10px 20px;
+  border-radius: 16px 16px 8px 16px;
   background: #ffe4ee;
   border-style: solid;
   border-color: rgba(244, 187, 211, 0.8);
@@ -751,11 +758,11 @@ button {
 }
 
 .message-row.continued:not(.self) .message-card {
-  border-top-left-radius: 10px;
+  border-top-left-radius: 8px;
 }
 
 .message-row.self.continued .message-card {
-  border-top-right-radius: 10px;
+  border-top-right-radius: 8px;
 }
 
 .message-row.system .message-card {

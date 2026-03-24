@@ -68,6 +68,7 @@ const elements = {
   removeImageButton: document.getElementById("removeImageButton"),
   installButton: document.getElementById("installButton"),
   notificationButton: document.getElementById("notificationButton"),
+  pushStatusNote: document.getElementById("pushStatusNote"),
   logoutButton: document.getElementById("logoutButton"),
   offlineBanner: document.getElementById("offlineBanner"),
   toast: document.getElementById("toast"),
@@ -103,6 +104,7 @@ let profileModalOpen = false;
 let composerStabilizeFrame = 0;
 let pushSyncPromise = null;
 let lastPushSyncKey = "";
+let pushDiagnostics = createPushDiagnostics();
 
 bootstrap();
 
@@ -768,6 +770,14 @@ function registerEvents() {
     });
   }
 
+  if ("serviceWorker" in navigator) {
+    navigator.serviceWorker.addEventListener("message", (event) => {
+      if (event.data?.type === "PUSH_SUBSCRIPTION_UPDATED") {
+        void refreshPushDiagnostics();
+      }
+    });
+  }
+
   window.addEventListener("beforeinstallprompt", (event) => {
     event.preventDefault();
     deferredInstallPrompt = event;
@@ -812,6 +822,7 @@ function registerEvents() {
     void scheduleFamilyRefresh();
     queueLiveRefresh(1000);
     void syncServiceWorkerState();
+    void refreshPushDiagnostics();
   });
 
   if (window.visualViewport) {
@@ -862,6 +873,7 @@ async function handleCreateFamily(event) {
     await refreshCurrentFamily({ persist: false, skipToast: true });
     elements.createFamilyForm.reset();
     render();
+    await syncPushSubscription({ force: true });
     showToast("\uAC00\uC871 \uADF8\uB8F9\uC774 \uB9CC\uB4E4\uC5B4\uC84C\uC2B5\uB2C8\uB2E4.");
     broadcastRefresh();
   } catch (error) {
@@ -904,6 +916,7 @@ async function handleJoinFamily(event) {
     await refreshCurrentFamily({ persist: false, skipToast: true });
     elements.joinFamilyForm.reset();
     render();
+    await syncPushSubscription({ force: true });
     showToast(`${session.familyName} \uAC00\uC871\uC5D0 \uCC38\uC5EC\uD588\uC2B5\uB2C8\uB2E4.`);
     broadcastRefresh();
   } catch (error) {
@@ -1433,6 +1446,8 @@ function render() {
   renderInviteList(family, member);
   renderChat(family, member, activeRoom);
   renderInstallButton();
+  renderPushStatus();
+  void refreshPushDiagnostics();
 }
 
 function renderProfileSummary(member) {
@@ -1744,6 +1759,17 @@ function syncProfileDraft(member) {
   };
 }
 
+function createPushDiagnostics() {
+  return {
+    supported: supportsPushNotifications(),
+    permission: "Notification" in window ? Notification.permission : "default",
+    serviceWorkerReady: false,
+    subscribed: false,
+    standalone: isStandaloneMode(),
+    error: "",
+  };
+}
+
 function renderProfileEditor(member) {
   if (!member) {
     return;
@@ -1893,6 +1919,49 @@ function renderInstallButton() {
   elements.installButton.textContent = "\uD648 \uD654\uBA74\uC5D0 \uCD94\uAC00";
 }
 
+function renderPushStatus() {
+  if (!elements.pushStatusNote || !elements.notificationButton) {
+    return;
+  }
+
+  const diagnostics = pushDiagnostics;
+  const parts = [];
+
+  if (!diagnostics.supported) {
+    elements.notificationButton.disabled = true;
+    elements.notificationButton.textContent = "\uD478\uC2DC \uBBF8\uC9C0\uC6D0";
+    elements.pushStatusNote.textContent = "\uC774 \uBE0C\uB77C\uC6B0\uC800\uB294 Push API\uB97C \uC9C0\uC6D0\uD558\uC9C0 \uC54A\uC2B5\uB2C8\uB2E4.";
+    return;
+  }
+
+  elements.notificationButton.disabled = false;
+  elements.notificationButton.textContent = diagnostics.permission === "granted"
+    ? "\uC54C\uB9BC \uAD8C\uD55C \uD655\uC778"
+    : "\uC54C\uB9BC \uAD8C\uD55C \uC694\uCCAD";
+
+  parts.push(diagnostics.permission === "granted"
+    ? "\uAD8C\uD55C \uD5C8\uC6A9\uB428"
+    : diagnostics.permission === "denied"
+      ? "\uAD8C\uD55C \uCC28\uB2E8\uB428"
+      : "\uAD8C\uD55C \uBBF8\uD5C8\uC6A9");
+  parts.push(diagnostics.serviceWorkerReady
+    ? "\uC11C\uBE44\uC2A4\uC6CC\uCEE4 \uC900\uBE44\uB428"
+    : "\uC11C\uBE44\uC2A4\uC6CC\uCEE4 \uC900\uBE44 \uC911");
+  parts.push(diagnostics.subscribed
+    ? "\uD478\uC2DC \uAD6C\uB3C5 \uC5F0\uACB0\uB428"
+    : "\uD478\uC2DC \uAD6C\uB3C5 \uC5C6\uC74C");
+
+  if (!diagnostics.standalone) {
+    parts.push("\uD648 \uD654\uBA74 \uCD94\uAC00 \uAD8C\uC7A5");
+  }
+
+  if (diagnostics.error) {
+    parts.push(diagnostics.error);
+  }
+
+  elements.pushStatusNote.textContent = parts.join(" / ");
+}
+
 async function promptInstall() {
   if (isStandaloneMode()) {
     showToast("\uC774\uBBF8 \uD648 \uD654\uBA74\uC5D0\uC11C \uBC14\uB85C \uC2E4\uD589 \uC911\uC785\uB2C8\uB2E4.");
@@ -1919,10 +1988,17 @@ async function requestNotificationPermission() {
     return;
   }
 
-  const result = await Notification.requestPermission();
-  void syncServiceWorkerState();
-  void syncPushSubscription({ force: true });
-  showToast(result === "granted" ? "\uC54C\uB9BC \uAD8C\uD55C\uC744 \uD5C8\uC6A9\uD588\uC2B5\uB2C8\uB2E4." : "\uC54C\uB9BC \uAD8C\uD55C\uC774 \uD5C8\uC6A9\uB418\uC9C0 \uC54A\uC558\uC2B5\uB2C8\uB2E4.");
+  try {
+    const result = await Notification.requestPermission();
+    await syncServiceWorkerState();
+    await syncPushSubscription({ force: true });
+    await refreshPushDiagnostics();
+    showToast(result === "granted" ? "\uC54C\uB9BC \uAD8C\uD55C\uC744 \uD5C8\uC6A9\uD588\uC2B5\uB2C8\uB2E4." : "\uC54C\uB9BC \uAD8C\uD55C\uC774 \uD5C8\uC6A9\uB418\uC9C0 \uC54A\uC558\uC2B5\uB2C8\uB2E4.");
+  } catch (error) {
+    console.error("Notification permission request failed", error);
+    await refreshPushDiagnostics(`\uD478\uC2DC \uC5F0\uACB0 \uC2E4\uD328: ${extractErrorMessage(error, "\uAD6C\uB3C5 \uD655\uC778 \uD544\uC694")}`);
+    showToast("\uC54C\uB9BC \uAD8C\uD55C \uBC0F \uD478\uC2DC \uC5F0\uACB0\uC744 \uD655\uC778\uD574\uC8FC\uC138\uC694.");
+  }
 }
 
 async function maybeNotify(previousState, nextState) {
@@ -1968,9 +2044,11 @@ function registerServiceWorker() {
     serviceWorkerRegistrationPromise = navigator.serviceWorker.register("service-worker.js").then(async (registration) => {
       await navigator.serviceWorker.ready;
       await configureBackgroundSync(registration);
+      await refreshPushDiagnostics();
       return registration;
     }).catch((error) => {
       console.error("Service worker registration failed", error);
+      void refreshPushDiagnostics("\uC11C\uBE44\uC2A4\uC6CC\uCEE4 \uB4F1\uB85D \uC2E4\uD328");
       return null;
     });
   }
@@ -2054,10 +2132,38 @@ async function syncServiceWorkerState() {
   });
 }
 
+async function refreshPushDiagnostics(errorMessage = "") {
+  pushDiagnostics = {
+    supported: supportsPushNotifications(),
+    permission: "Notification" in window ? Notification.permission : "default",
+    serviceWorkerReady: false,
+    subscribed: false,
+    standalone: isStandaloneMode(),
+    error: errorMessage,
+  };
+
+  if (!pushDiagnostics.supported) {
+    renderPushStatus();
+    return pushDiagnostics;
+  }
+
+  try {
+    const registration = await (serviceWorkerRegistrationPromise ?? navigator.serviceWorker.ready.catch(() => null));
+    pushDiagnostics.serviceWorkerReady = Boolean(registration);
+    pushDiagnostics.subscribed = Boolean(await registration?.pushManager?.getSubscription?.());
+  } catch (error) {
+    pushDiagnostics.error = errorMessage || extractErrorMessage(error, "\uD478\uC2DC \uC0C1\uD0DC \uD655\uC778 \uC2E4\uD328");
+  }
+
+  renderPushStatus();
+  return pushDiagnostics;
+}
+
 async function showAppNotification(title, options = {}) {
   const notificationOptions = {
     icon: "icons/icon-192.png",
     badge: "icons/icon-192.png",
+    renotify: Boolean(options?.tag),
     ...options,
   };
 
@@ -2153,8 +2259,10 @@ async function syncPushSubscription({ force = false } = {}) {
     lastPushSyncKey = syncKey;
   })().catch((error) => {
     console.error("Push subscription sync failed", error);
+    void refreshPushDiagnostics(extractErrorMessage(error, "\uD478\uC2DC \uAD6C\uB3C5 \uC5F0\uACB0 \uC2E4\uD328"));
   }).finally(() => {
     pushSyncPromise = null;
+    void refreshPushDiagnostics();
   });
 
   return pushSyncPromise;
@@ -2174,7 +2282,11 @@ async function clearPushSubscription(memberId) {
     await subscription?.unsubscribe?.();
   } catch (error) {
     console.warn("Push subscription cleanup failed", error);
+    void refreshPushDiagnostics(extractErrorMessage(error, "\uD478\uC2DC \uAD6C\uB3C5 \uC815\uB9AC \uC2E4\uD328"));
+    return;
   }
+
+  await refreshPushDiagnostics();
 }
 
 function urlBase64ToUint8Array(value) {
