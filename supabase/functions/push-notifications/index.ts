@@ -17,114 +17,121 @@ const corsHeaders = {
 };
 
 Deno.serve(async (request) => {
-  if (request.method === "OPTIONS") {
-    return new Response("ok", {
-      headers: corsHeaders,
-    });
-  }
-
-  const supabaseUrl = Deno.env.get("SUPABASE_URL") ?? "";
-  const serviceRoleKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "";
-
-  if (!supabaseUrl || !serviceRoleKey) {
-    return jsonResponse({ error: "Supabase environment is not configured." }, 500);
-  }
-
-  const supabase = createClient(supabaseUrl, serviceRoleKey, {
-    auth: {
-      autoRefreshToken: false,
-      persistSession: false,
-    },
-  });
-
-  const vapidConfig = await ensureVapidConfig(supabase, supabaseUrl);
-
-  if (request.method === "GET") {
-    return jsonResponse({
-      publicKey: vapidConfig.publicKey,
-      subject: vapidConfig.subject,
-    });
-  }
-
-  if (request.method !== "POST") {
-    return jsonResponse({ error: "Method not allowed." }, 405);
-  }
-
-  const payload = await request.json().catch(() => null);
-  const messageId = payload?.record?.id;
-  if (!messageId) {
-    return jsonResponse({ ok: true, skipped: "missing_message_id" });
-  }
-
-  const { data: claimed, error: claimError } = await supabase.rpc("app_claim_push_dispatch", {
-    p_message_id: messageId,
-  });
-  if (claimError) {
-    console.error("Claim push dispatch failed", claimError);
-    return jsonResponse({ error: "Failed to claim push dispatch." }, 500);
-  }
-
-  if (!claimed) {
-    return jsonResponse({ ok: true, skipped: "already_dispatched" });
-  }
-
-  const { data: deliveries, error: deliveriesError } = await supabase.rpc("app_get_push_delivery_batch", {
-    p_message_id: messageId,
-  });
-  if (deliveriesError) {
-    console.error("Load push delivery batch failed", deliveriesError);
-    return jsonResponse({ error: "Failed to load push delivery batch." }, 500);
-  }
-
-  const batch = Array.isArray(deliveries) ? deliveries : [];
-  if (batch.length === 0) {
-    return jsonResponse({ ok: true, sent: 0, removed: 0, failed: 0 });
-  }
-
-  const applicationServer = await ApplicationServer.new({
-    contactInformation: vapidConfig.subject,
-    vapidKeys: vapidConfig.vapidKeys,
-  });
-
-  let sent = 0;
-  let removed = 0;
-  let failed = 0;
-
-  for (const delivery of batch) {
-    try {
-      const subscriber = applicationServer.subscribe(delivery.subscription);
-      await subscriber.pushTextMessage(JSON.stringify({
-        title: delivery.title,
-        body: delivery.body,
-        tag: delivery.tag,
-        data: delivery.data,
-      }), {
-        urgency: Urgency.High,
-        topic: delivery.tag,
-        ttl: 60,
-      });
-      sent += 1;
-    } catch (error) {
-      if (error instanceof PushMessageError && error.isGone()) {
-        await removeSubscription(supabase, delivery.endpoint);
-        removed += 1;
-        continue;
-      }
-
-      failed += 1;
-      console.error("Web push send failed", {
-        endpoint: delivery.endpoint,
-        message: error?.message ?? String(error),
+  try {
+    if (request.method === "OPTIONS") {
+      return new Response("ok", {
+        headers: corsHeaders,
       });
     }
-  }
 
-  return jsonResponse({
-    ok: true,
-    sent,
-    removed,
-    failed,
-  });
+    const supabaseUrl = Deno.env.get("SUPABASE_URL") ?? "";
+    const serviceRoleKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "";
+
+    if (!supabaseUrl || !serviceRoleKey) {
+      return jsonResponse({ error: "Supabase environment is not configured." }, 500);
+    }
+
+    const supabase = createClient(supabaseUrl, serviceRoleKey, {
+      auth: {
+        autoRefreshToken: false,
+        persistSession: false,
+      },
+    });
+
+    const vapidConfig = await ensureVapidConfig(supabase, supabaseUrl);
+
+    if (request.method === "GET") {
+      return jsonResponse({
+        publicKey: vapidConfig.publicKey,
+        subject: vapidConfig.subject,
+      });
+    }
+
+    if (request.method !== "POST") {
+      return jsonResponse({ error: "Method not allowed." }, 405);
+    }
+
+    const payload = await request.json().catch(() => null);
+    const messageId = payload?.record?.id;
+    if (!messageId) {
+      return jsonResponse({ ok: true, skipped: "missing_message_id" });
+    }
+
+    const { data: claimed, error: claimError } = await supabase.rpc("app_claim_push_dispatch", {
+      p_message_id: messageId,
+    });
+    if (claimError) {
+      console.error("Claim push dispatch failed", claimError);
+      return jsonResponse({ error: "Failed to claim push dispatch." }, 500);
+    }
+
+    if (!claimed) {
+      return jsonResponse({ ok: true, skipped: "already_dispatched" });
+    }
+
+    const { data: deliveries, error: deliveriesError } = await supabase.rpc("app_get_push_delivery_batch", {
+      p_message_id: messageId,
+    });
+    if (deliveriesError) {
+      console.error("Load push delivery batch failed", deliveriesError);
+      return jsonResponse({ error: "Failed to load push delivery batch." }, 500);
+    }
+
+    const batch = Array.isArray(deliveries) ? deliveries : [];
+    if (batch.length === 0) {
+      return jsonResponse({ ok: true, sent: 0, removed: 0, failed: 0 });
+    }
+
+    const applicationServer = await ApplicationServer.new({
+      contactInformation: vapidConfig.subject,
+      vapidKeys: vapidConfig.vapidKeys,
+    });
+
+    let sent = 0;
+    let removed = 0;
+    let failed = 0;
+
+    for (const delivery of batch) {
+      try {
+        const subscriber = applicationServer.subscribe(delivery.subscription);
+        await subscriber.pushTextMessage(JSON.stringify({
+          title: delivery.title,
+          body: delivery.body,
+          tag: delivery.tag,
+          data: delivery.data,
+        }), {
+          urgency: Urgency.High,
+          topic: delivery.tag,
+          ttl: 60,
+        });
+        sent += 1;
+      } catch (error) {
+        if (error instanceof PushMessageError && error.isGone()) {
+          await removeSubscription(supabase, delivery.endpoint);
+          removed += 1;
+          continue;
+        }
+
+        failed += 1;
+        console.error("Web push send failed", {
+          endpoint: delivery.endpoint,
+          message: error?.message ?? String(error),
+        });
+      }
+    }
+
+    return jsonResponse({
+      ok: true,
+      sent,
+      removed,
+      failed,
+    });
+  } catch (error) {
+    console.error("Push notifications function failed", error);
+    return jsonResponse({
+      error: error instanceof Error ? error.message : String(error),
+    }, 500);
+  }
 });
 
 async function ensureVapidConfig(supabase: ReturnType<typeof createClient>, supabaseUrl: string) {
