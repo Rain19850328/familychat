@@ -1,5 +1,13 @@
 import { createClient } from "npm:@supabase/supabase-js@2";
-import webpush from "npm:web-push@3.6.7";
+import {
+  ApplicationServer,
+  PushMessageError,
+  Urgency,
+  exportApplicationServerKey,
+  exportVapidKeys,
+  generateVapidKeys,
+  importVapidKeys,
+} from "jsr:@negrel/webpush@0.5.0";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -8,16 +16,6 @@ const corsHeaders = {
   "Content-Type": "application/json",
 };
 
-const supabaseUrl = Deno.env.get("SUPABASE_URL") ?? "";
-const serviceRoleKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "";
-
-const supabase = createClient(supabaseUrl, serviceRoleKey, {
-  auth: {
-    autoRefreshToken: false,
-    persistSession: false,
-  },
-});
-
 Deno.serve(async (request) => {
   if (request.method === "OPTIONS") {
     return new Response("ok", {
@@ -25,11 +23,21 @@ Deno.serve(async (request) => {
     });
   }
 
+  const supabaseUrl = Deno.env.get("SUPABASE_URL") ?? "";
+  const serviceRoleKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "";
+
   if (!supabaseUrl || !serviceRoleKey) {
     return jsonResponse({ error: "Supabase environment is not configured." }, 500);
   }
 
-  const vapidConfig = await ensureVapidConfig();
+  const supabase = createClient(supabaseUrl, serviceRoleKey, {
+    auth: {
+      autoRefreshToken: false,
+      persistSession: false,
+    },
+  });
+
+  const vapidConfig = await ensureVapidConfig(supabase, supabaseUrl);
 
   if (request.method === "GET") {
     return jsonResponse({
@@ -73,11 +81,10 @@ Deno.serve(async (request) => {
     return jsonResponse({ ok: true, sent: 0, removed: 0, failed: 0 });
   }
 
-  webpush.setVapidDetails(
-    vapidConfig.subject,
-    vapidConfig.publicKey,
-    vapidConfig.privateKey,
-  );
+  const applicationServer = await ApplicationServer.new({
+    contactInformation: vapidConfig.subject,
+    vapidKeys: vapidConfig.vapidKeys,
+  });
 
   let sent = 0;
   let removed = 0;
@@ -85,20 +92,21 @@ Deno.serve(async (request) => {
 
   for (const delivery of batch) {
     try {
-      await webpush.sendNotification(
-        delivery.subscription,
-        JSON.stringify({
-          title: delivery.title,
-          body: delivery.body,
-          tag: delivery.tag,
-          data: delivery.data,
-        }),
-      );
+      const subscriber = applicationServer.subscribe(delivery.subscription);
+      await subscriber.pushTextMessage(JSON.stringify({
+        title: delivery.title,
+        body: delivery.body,
+        tag: delivery.tag,
+        data: delivery.data,
+      }), {
+        urgency: Urgency.High,
+        topic: delivery.tag,
+        ttl: 60,
+      });
       sent += 1;
     } catch (error) {
-      const statusCode = typeof error?.statusCode === "number" ? error.statusCode : null;
-      if (statusCode === 404 || statusCode === 410) {
-        await removeSubscription(delivery.endpoint);
+      if (error instanceof PushMessageError && error.isGone()) {
+        await removeSubscription(supabase, delivery.endpoint);
         removed += 1;
         continue;
       }
@@ -106,7 +114,6 @@ Deno.serve(async (request) => {
       failed += 1;
       console.error("Web push send failed", {
         endpoint: delivery.endpoint,
-        statusCode,
         message: error?.message ?? String(error),
       });
     }
@@ -120,7 +127,7 @@ Deno.serve(async (request) => {
   });
 });
 
-async function ensureVapidConfig() {
+async function ensureVapidConfig(supabase: ReturnType<typeof createClient>, supabaseUrl: string) {
   const { data: existing, error } = await supabase
     .from("push_vapid_config")
     .select("public_key, private_key, subject")
@@ -132,21 +139,27 @@ async function ensureVapidConfig() {
   }
 
   if (existing?.public_key && existing?.private_key && existing?.subject) {
-    return {
+    const vapidKeys = await importVapidKeys({
       publicKey: existing.public_key,
       privateKey: existing.private_key,
+    });
+
+    return {
+      publicKey: await exportApplicationServerKey(vapidKeys),
       subject: existing.subject,
+      vapidKeys,
     };
   }
 
-  const generated = webpush.generateVAPIDKeys();
+  const vapidKeys = await generateVapidKeys();
+  const exported = await exportVapidKeys(vapidKeys);
   const subject = new URL(supabaseUrl).origin;
   const { error: upsertError } = await supabase
     .from("push_vapid_config")
     .upsert({
       id: true,
-      public_key: generated.publicKey,
-      private_key: generated.privateKey,
+      public_key: exported.publicKey,
+      private_key: exported.privateKey,
       subject,
       updated_at: new Date().toISOString(),
     });
@@ -156,13 +169,13 @@ async function ensureVapidConfig() {
   }
 
   return {
-    publicKey: generated.publicKey,
-    privateKey: generated.privateKey,
+    publicKey: await exportApplicationServerKey(vapidKeys),
     subject,
+    vapidKeys,
   };
 }
 
-async function removeSubscription(endpoint: string) {
+async function removeSubscription(supabase: ReturnType<typeof createClient>, endpoint: string) {
   const { error } = await supabase
     .from("push_subscriptions")
     .delete()
