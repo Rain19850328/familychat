@@ -324,7 +324,7 @@ async function refreshCurrentFamily({
       void syncServiceWorkerState();
 
       if (notify) {
-        maybeNotify(priorState, state);
+        void maybeNotify(priorState, state);
       }
 
       return family;
@@ -1895,7 +1895,7 @@ async function requestNotificationPermission() {
   showToast(result === "granted" ? "\uC54C\uB9BC \uAD8C\uD55C\uC744 \uD5C8\uC6A9\uD588\uC2B5\uB2C8\uB2E4." : "\uC54C\uB9BC \uAD8C\uD55C\uC774 \uD5C8\uC6A9\uB418\uC9C0 \uC54A\uC558\uC2B5\uB2C8\uB2E4.");
 }
 
-function maybeNotify(previousState, nextState) {
+async function maybeNotify(previousState, nextState) {
   if (!document.hidden || !("Notification" in window) || Notification.permission !== "granted") {
     return;
   }
@@ -1911,24 +1911,26 @@ function maybeNotify(previousState, nextState) {
     return;
   }
 
-  getRoomsForMember(family, session.memberId).forEach((room) => {
+  for (const room of getRoomsForMember(family, session.memberId)) {
     if (room.mutedBy?.[session.memberId]) {
-      return;
+      continue;
     }
 
     const nextLast = family.messages.filter((message) => message.roomId === room.id).at(-1);
     const prevLast = previousFamily?.messages.filter((message) => message.roomId === room.id).at(-1);
     if (!nextLast || nextLast.id === prevLast?.id || nextLast.senderId === session.memberId) {
-      return;
+      continue;
     }
 
-    new Notification(createRoomTitle(family, room, session.memberId), {
+    await showAppNotification(createRoomTitle(family, room, session.memberId), {
       body: nextLast.type === "image" ? "\uC0AC\uC9C4\uC774 \uB3C4\uCC29\uD588\uC2B5\uB2C8\uB2E4." : nextLast.text || "\uC0C8 \uBA54\uC2DC\uC9C0\uAC00 \uB3C4\uCC29\uD588\uC2B5\uB2C8\uB2E4.",
-      icon: "icons/icon-192.png",
-      badge: "icons/icon-192.png",
       tag: room.id,
+      data: {
+        roomId: room.id,
+        familyId: family.id,
+      },
     });
-  });
+  }
 }
 
 function registerServiceWorker() {
@@ -2020,6 +2022,26 @@ async function syncServiceWorkerState() {
       notificationPermission: "Notification" in window ? Notification.permission : "default",
     },
   });
+}
+
+async function showAppNotification(title, options = {}) {
+  const notificationOptions = {
+    icon: "icons/icon-192.png",
+    badge: "icons/icon-192.png",
+    ...options,
+  };
+
+  try {
+    const registration = await (serviceWorkerRegistrationPromise ?? navigator.serviceWorker?.ready ?? Promise.resolve(null));
+    if (registration?.showNotification) {
+      await registration.showNotification(title, notificationOptions);
+      return;
+    }
+  } catch (error) {
+    console.warn("Service worker notification failed", error);
+  }
+
+  new Notification(title, notificationOptions);
 }
 
 function formatTime(value) {
