@@ -8,6 +8,7 @@ const REALTIME_TABLES = ["families", "members", "rooms", "room_members", "invite
 const ACTIVE_REFRESH_INTERVAL_MS = 3000;
 const BACKGROUND_REFRESH_INTERVAL_MS = 12000;
 const BACKGROUND_SYNC_TAG = "familychat-message-check";
+const PUSH_FUNCTION_PATH = "/functions/v1/push-notifications";
 const PRESET_AVATARS = [
   { key: "adult-man", label: "어른 남자", src: "avatars/adult-man.svg" },
   { key: "adult-woman", label: "어른 여자", src: "avatars/adult-woman.svg" },
@@ -100,6 +101,8 @@ let profileDraftMemberId = null;
 let profileDraft = null;
 let profileModalOpen = false;
 let composerStabilizeFrame = 0;
+let pushSyncPromise = null;
+let lastPushSyncKey = "";
 
 bootstrap();
 
@@ -119,6 +122,7 @@ async function bootstrap() {
   render();
   syncLiveRefresh();
   void syncServiceWorkerState();
+  void syncPushSubscription();
   void markActiveRoomRead({ silent: true });
 }
 
@@ -269,6 +273,8 @@ async function refreshCurrentFamily({
       }
 
       if (!family) {
+        void clearPushSubscription(sessionAtStart.memberId);
+        lastPushSyncKey = "";
         state.families = [];
         state.currentSession = null;
         removeDeviceProfile(sessionAtStart.familyId, sessionAtStart.memberId);
@@ -288,6 +294,8 @@ async function refreshCurrentFamily({
 
       const member = findMember(family, sessionAtStart.memberId);
       if (!member) {
+        void clearPushSubscription(sessionAtStart.memberId);
+        lastPushSyncKey = "";
         state.currentSession = null;
         removeDeviceProfile(sessionAtStart.familyId, sessionAtStart.memberId);
         unsubscribeFamilyChanges();
@@ -322,6 +330,7 @@ async function refreshCurrentFamily({
       }
 
       void syncServiceWorkerState();
+      void syncPushSubscription();
 
       if (notify) {
         void maybeNotify(priorState, state);
@@ -551,6 +560,23 @@ async function removeMemberRemote(familyId, adminMemberId, targetMemberId) {
     p_family_id: familyId,
     p_admin_member_id: adminMemberId,
     p_target_member_id: targetMemberId,
+  });
+}
+
+async function upsertPushSubscriptionRemote(memberId, endpoint, p256dh, auth, userAgent) {
+  return rpc("app_upsert_push_subscription", {
+    p_member_id: memberId,
+    p_endpoint: endpoint,
+    p_p256dh: p256dh,
+    p_auth: auth,
+    p_user_agent: userAgent ?? "",
+  });
+}
+
+async function removePushSubscriptionRemote(memberId, endpoint = null) {
+  return rpc("app_remove_push_subscription", {
+    p_member_id: memberId,
+    p_endpoint: endpoint ?? null,
   });
 }
 
@@ -1266,6 +1292,9 @@ function handleImageSelection(event) {
 }
 
 function handleLogout() {
+  const memberId = state.currentSession?.memberId ?? null;
+  void clearPushSubscription(memberId);
+  lastPushSyncKey = "";
   setProfileModal(false);
   state.currentSession = null;
   state.families = [];
@@ -1892,6 +1921,7 @@ async function requestNotificationPermission() {
 
   const result = await Notification.requestPermission();
   void syncServiceWorkerState();
+  void syncPushSubscription({ force: true });
   showToast(result === "granted" ? "\uC54C\uB9BC \uAD8C\uD55C\uC744 \uD5C8\uC6A9\uD588\uC2B5\uB2C8\uB2E4." : "\uC54C\uB9BC \uAD8C\uD55C\uC774 \uD5C8\uC6A9\uB418\uC9C0 \uC54A\uC558\uC2B5\uB2C8\uB2E4.");
 }
 
@@ -1924,7 +1954,7 @@ async function maybeNotify(previousState, nextState) {
 
     await showAppNotification(createRoomTitle(family, room, session.memberId), {
       body: nextLast.type === "image" ? "\uC0AC\uC9C4\uC774 \uB3C4\uCC29\uD588\uC2B5\uB2C8\uB2E4." : nextLast.text || "\uC0C8 \uBA54\uC2DC\uC9C0\uAC00 \uB3C4\uCC29\uD588\uC2B5\uB2C8\uB2E4.",
-      tag: room.id,
+      tag: `${family.id}:${room.id}`,
       data: {
         roomId: room.id,
         familyId: family.id,
@@ -2042,6 +2072,116 @@ async function showAppNotification(title, options = {}) {
   }
 
   new Notification(title, notificationOptions);
+}
+
+function supportsPushNotifications() {
+  return "serviceWorker" in navigator && "PushManager" in window;
+}
+
+async function fetchPushPublicKey() {
+  const response = await fetch(`${supabaseConfig.url}${PUSH_FUNCTION_PATH}`, {
+    method: "GET",
+    headers: {
+      Authorization: `Bearer ${supabaseConfig.anonKey}`,
+      apikey: supabaseConfig.anonKey,
+    },
+  });
+
+  if (!response.ok) {
+    throw new Error("Failed to load push public key.");
+  }
+
+  const payload = await response.json();
+  if (!payload?.publicKey) {
+    throw new Error("Push public key is missing.");
+  }
+
+  return payload.publicKey;
+}
+
+async function syncPushSubscription({ force = false } = {}) {
+  if (!hasSupabaseConfig || !supportsPushNotifications()) {
+    return;
+  }
+
+  const session = state.currentSession;
+  const permission = "Notification" in window ? Notification.permission : "default";
+  const syncKey = session ? `${session.familyId}:${session.memberId}:${permission}` : `none:${permission}`;
+  if (!force && syncKey === lastPushSyncKey) {
+    return;
+  }
+
+  if (pushSyncPromise) {
+    return pushSyncPromise;
+  }
+
+  pushSyncPromise = (async () => {
+    const registration = await (serviceWorkerRegistrationPromise ?? navigator.serviceWorker.ready.catch(() => null));
+    if (!registration?.pushManager) {
+      return;
+    }
+
+    const existingSubscription = await registration.pushManager.getSubscription();
+
+    if (!session || permission !== "granted") {
+      if (session?.memberId) {
+        await removePushSubscriptionRemote(session.memberId, existingSubscription?.endpoint ?? null);
+      }
+      await existingSubscription?.unsubscribe?.();
+      lastPushSyncKey = syncKey;
+      return;
+    }
+
+    const publicKey = await fetchPushPublicKey();
+    const subscription = existingSubscription ?? await registration.pushManager.subscribe({
+      userVisibleOnly: true,
+      applicationServerKey: urlBase64ToUint8Array(publicKey),
+    });
+
+    const serialized = subscription.toJSON();
+    if (!serialized.endpoint || !serialized.keys?.p256dh || !serialized.keys?.auth) {
+      throw new Error("Push subscription is incomplete.");
+    }
+
+    await upsertPushSubscriptionRemote(
+      session.memberId,
+      serialized.endpoint,
+      serialized.keys.p256dh,
+      serialized.keys.auth,
+      navigator.userAgent ?? "",
+    );
+    lastPushSyncKey = syncKey;
+  })().catch((error) => {
+    console.error("Push subscription sync failed", error);
+  }).finally(() => {
+    pushSyncPromise = null;
+  });
+
+  return pushSyncPromise;
+}
+
+async function clearPushSubscription(memberId) {
+  if (!supportsPushNotifications()) {
+    return;
+  }
+
+  try {
+    const registration = await (serviceWorkerRegistrationPromise ?? navigator.serviceWorker.ready.catch(() => null));
+    const subscription = await registration?.pushManager?.getSubscription?.();
+    if (memberId) {
+      await removePushSubscriptionRemote(memberId, subscription?.endpoint ?? null);
+    }
+    await subscription?.unsubscribe?.();
+  } catch (error) {
+    console.warn("Push subscription cleanup failed", error);
+  }
+}
+
+function urlBase64ToUint8Array(value) {
+  const padding = "=".repeat((4 - (value.length % 4)) % 4);
+  const base64 = (value + padding).replaceAll("-", "+").replaceAll("_", "/");
+  const raw = atob(base64);
+  return Uint8Array.from(raw, (character) => character.charCodeAt(0));
 }
 
 function formatTime(value) {

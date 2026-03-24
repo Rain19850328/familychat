@@ -105,6 +105,19 @@ self.addEventListener("sync", (event) => {
   }
 });
 
+self.addEventListener("push", (event) => {
+  event.waitUntil((async () => {
+    const payload = parsePushPayload(event);
+    await self.registration.showNotification(payload.title, {
+      body: payload.body,
+      icon: "./icons/icon-192.png",
+      badge: "./icons/icon-192.png",
+      tag: payload.tag,
+      data: payload.data,
+    });
+  })());
+});
+
 self.addEventListener("notificationclick", (event) => {
   event.notification.close();
   event.waitUntil((async () => {
@@ -138,6 +151,34 @@ async function syncBackgroundState(payload) {
     notificationPermission: payload.notificationPermission ?? "default",
     lastMessageByRoom: payload.lastMessageByRoom ?? currentState?.lastMessageByRoom ?? {},
   });
+}
+
+function parsePushPayload(event) {
+  const fallback = {
+    title: "새 메시지",
+    body: "새 메시지가 도착했습니다.",
+    tag: "familychat-push",
+    data: {},
+  };
+
+  if (!event.data) {
+    return fallback;
+  }
+
+  try {
+    const payload = event.data.json();
+    return {
+      title: payload?.title || fallback.title,
+      body: payload?.body || fallback.body,
+      tag: payload?.tag || fallback.tag,
+      data: payload?.data || fallback.data,
+    };
+  } catch {
+    return {
+      ...fallback,
+      body: event.data.text() || fallback.body,
+    };
+  }
 }
 
 async function clearBackgroundState() {
