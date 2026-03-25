@@ -474,6 +474,9 @@ class FamilyChatAppState extends ChangeNotifier {
       savedAt: DateTime.now().toIso8601String(),
     ));
 
+    await _persistLocalState();
+    notifyListeners();
+
     await refreshFamily();
     _subscribeFamilyRealtime();
     _startPresenceTimer();
