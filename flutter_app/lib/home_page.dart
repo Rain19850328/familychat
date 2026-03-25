@@ -29,7 +29,6 @@ class _FamilyChatHomeState extends State<FamilyChatHome> {
   void initState() {
     super.initState();
     widget.appState.addListener(_handleStateChange);
-    _composerController.addListener(_syncComposerDraft);
   }
 
   @override
@@ -41,12 +40,6 @@ class _FamilyChatHomeState extends State<FamilyChatHome> {
     _memberNameController.dispose();
     _composerController.dispose();
     super.dispose();
-  }
-
-  void _syncComposerDraft() {
-    if (widget.appState.pendingMessage != _composerController.text) {
-      widget.appState.pendingMessage = _composerController.text;
-    }
   }
 
   void _handleStateChange() {
@@ -62,13 +55,6 @@ class _FamilyChatHomeState extends State<FamilyChatHome> {
   Widget build(BuildContext context) {
     final appState = widget.appState;
     final isDesktop = MediaQuery.sizeOf(context).width >= 980;
-
-    if (_composerController.text != appState.pendingMessage) {
-      _composerController.value = TextEditingValue(
-        text: appState.pendingMessage,
-        selection: TextSelection.collapsed(offset: appState.pendingMessage.length),
-      );
-    }
 
     return Scaffold(
       key: _scaffoldKey,

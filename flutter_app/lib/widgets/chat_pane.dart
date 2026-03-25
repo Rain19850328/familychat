@@ -45,12 +45,18 @@ class ChatPane extends StatelessWidget {
               child: Row(
                 children: [
                   if (MediaQuery.sizeOf(context).width < 980)
-                    IconButton(onPressed: onOpenDrawer, icon: const Icon(Icons.menu_rounded)),
+                    IconButton(
+                      onPressed: onOpenDrawer,
+                      icon: const Icon(Icons.menu_rounded),
+                    ),
                   Expanded(
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        const Text('Room', style: TextStyle(color: Color(0xFF4A746C), fontWeight: FontWeight.w700)),
+                        const Text(
+                          'Room',
+                          style: TextStyle(color: Color(0xFF4A746C), fontWeight: FontWeight.w700),
+                        ),
                         Text(
                           roomTitle(room, family, member.id, family.members),
                           style: const TextStyle(fontSize: 28, fontWeight: FontWeight.w800),
@@ -69,7 +75,7 @@ class ChatPane extends StatelessWidget {
           ),
           Expanded(
             child: messages.isEmpty
-                ? const Center(child: Text('아직 메시지가 없습니다. 첫 메시지를 보내보세요.'))
+                ? const Center(child: Text('아직 메시지가 없습니다. 첫 메시지를 보내 보세요.'))
                 : ListView.separated(
                     padding: const EdgeInsets.fromLTRB(18, 8, 18, 18),
                     reverse: true,
@@ -79,6 +85,7 @@ class ChatPane extends StatelessWidget {
                       final message = messages[messages.length - 1 - index];
                       final isMine = message.senderId == member.id;
                       final sender = family.members.where((item) => item.id == message.senderId).firstOrNull;
+
                       if (message.type == 'system') {
                         return Center(
                           child: Container(
@@ -154,11 +161,19 @@ class ChatPane extends StatelessWidget {
                       children: [
                         ClipRRect(
                           borderRadius: BorderRadius.circular(16),
-                          child: Image.network(appState.pendingImageDataUrl!, width: 96, height: 96, fit: BoxFit.cover),
+                          child: Image.network(
+                            appState.pendingImageDataUrl!,
+                            width: 96,
+                            height: 96,
+                            fit: BoxFit.cover,
+                          ),
                         ),
                         const SizedBox(width: 12),
                         Expanded(child: Text(appState.pendingImageName ?? '선택한 이미지')),
-                        IconButton(onPressed: appState.clearPendingImage, icon: const Icon(Icons.close)),
+                        IconButton(
+                          onPressed: appState.clearPendingImage,
+                          icon: const Icon(Icons.close),
+                        ),
                       ],
                     ),
                   ),
@@ -185,13 +200,18 @@ class ChatPane extends StatelessWidget {
                             minLines: 1,
                             maxLines: 5,
                             decoration: const InputDecoration(
-                              hintText: '메시지를 입력하세요',
+                              hintText: '메시지를 입력해 주세요',
                               border: InputBorder.none,
                             ),
                           ),
                         ),
                         FilledButton(
-                          onPressed: appState.sendMessage,
+                          onPressed: () async {
+                            final sent = await appState.sendMessage(composerController.text);
+                            if (sent) {
+                              composerController.clear();
+                            }
+                          },
                           child: const Text('전송'),
                         ),
                       ],

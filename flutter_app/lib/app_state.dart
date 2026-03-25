@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:convert';
+
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -40,7 +41,6 @@ class FamilyChatAppState extends ChangeNotifier {
   String? errorMessage;
   String? toastMessage;
 
-  String pendingMessage = '';
   String? pendingImageDataUrl;
   String? pendingImageName;
   String? profileDraftName;
@@ -49,6 +49,7 @@ class FamilyChatAppState extends ChangeNotifier {
 
   RealtimeChannel? _familyChannel;
   Timer? _presenceTimer;
+  Timer? _refreshTimer;
 
   Future<void> bootstrap() async {
     _hydrateLocalState();
@@ -59,6 +60,7 @@ class FamilyChatAppState extends ChangeNotifier {
       await refreshFamily(skipErrorToast: true);
       _subscribeFamilyRealtime();
       _startPresenceTimer();
+      _startRefreshTimer();
       unawaited(touchCurrentMember());
     }
   }
@@ -157,6 +159,7 @@ class FamilyChatAppState extends ChangeNotifier {
     await refreshFamily();
     _subscribeFamilyRealtime();
     _startPresenceTimer();
+    _startRefreshTimer();
     unawaited(touchCurrentMember());
   }
 
@@ -233,21 +236,22 @@ class FamilyChatAppState extends ChangeNotifier {
     });
   }
 
-  Future<void> sendMessage() async {
+  Future<bool> sendMessage(String rawText) async {
     final snapshot = family;
     final member = currentMember;
     final room = activeRoom;
     if (snapshot == null || member == null || room == null) {
-      return;
+      return false;
     }
 
-    final text = pendingMessage.trim();
+    final text = rawText.trim();
     final image = pendingImageDataUrl;
     if (text.isEmpty && (image == null || image.isEmpty)) {
-      _setToast('메시지나 이미지를 입력하세요.');
-      return;
+      _setToast('메시지나 이미지를 입력해 주세요.');
+      return false;
     }
 
+    var sent = false;
     await _runBusy(() async {
       await _rpcMap('app_send_message', <String, dynamic>{
         'p_family_id': snapshot.id,
@@ -257,14 +261,15 @@ class FamilyChatAppState extends ChangeNotifier {
         'p_text': text,
         'p_image_data_url': image ?? '',
       });
-      pendingMessage = '';
       pendingImageDataUrl = null;
       pendingImageName = null;
+      sent = true;
       notifyListeners();
       await touchCurrentMember();
       await refreshFamily();
       await markActiveRoomRead();
     });
+    return sent;
   }
 
   Future<void> pickComposerImage() async {
@@ -310,7 +315,9 @@ class FamilyChatAppState extends ChangeNotifier {
         'p_room_id': room.id,
         'p_member_id': member.id,
       });
-    } catch (_) {}
+    } catch (_) {
+      // Ignore read marker failures.
+    }
   }
 
   Future<void> toggleMute() async {
@@ -381,7 +388,7 @@ class FamilyChatAppState extends ChangeNotifier {
       return;
     }
     if (draftName.isEmpty) {
-      _setToast('이름을 입력하세요.');
+      _setToast('이름을 입력해 주세요.');
       return;
     }
 
@@ -439,7 +446,9 @@ class FamilyChatAppState extends ChangeNotifier {
       await _rpcVoid('app_touch_member', <String, dynamic>{
         'p_member_id': member.id,
       });
-    } catch (_) {}
+    } catch (_) {
+      // Ignore presence failures.
+    }
   }
 
   Future<void> logout() async {
@@ -447,9 +456,10 @@ class FamilyChatAppState extends ChangeNotifier {
     _familyChannel = null;
     _presenceTimer?.cancel();
     _presenceTimer = null;
+    _refreshTimer?.cancel();
+    _refreshTimer = null;
     family = null;
     session = null;
-    pendingMessage = '';
     pendingImageDataUrl = null;
     pendingImageName = null;
     await _persistLocalState();
@@ -480,6 +490,7 @@ class FamilyChatAppState extends ChangeNotifier {
     await refreshFamily();
     _subscribeFamilyRealtime();
     _startPresenceTimer();
+    _startRefreshTimer();
     await touchCurrentMember();
   }
 
@@ -531,6 +542,15 @@ class FamilyChatAppState extends ChangeNotifier {
     _presenceTimer?.cancel();
     _presenceTimer = Timer.periodic(const Duration(seconds: 30), (_) {
       unawaited(touchCurrentMember());
+    });
+  }
+
+  void _startRefreshTimer() {
+    _refreshTimer?.cancel();
+    _refreshTimer = Timer.periodic(const Duration(seconds: 2), (_) {
+      if (session != null && !isBusy) {
+        unawaited(refreshFamily(skipErrorToast: true));
+      }
     });
   }
 
@@ -655,6 +675,7 @@ class FamilyChatAppState extends ChangeNotifier {
   void dispose() {
     _familyChannel?.unsubscribe();
     _presenceTimer?.cancel();
+    _refreshTimer?.cancel();
     super.dispose();
   }
 }
