@@ -96,7 +96,7 @@ class FamilySettings {
 
   final bool allowGroupRooms;
 
-  factory FamilySettings.fromJson(Map<String, dynamic>? json) {
+  factory FamilySettings.fromJson(Map<dynamic, dynamic>? json) {
     return FamilySettings(
       allowGroupRooms: json?['allowGroupRooms'] == true,
     );
@@ -145,7 +145,7 @@ class FamilySnapshot {
               .map((item) => MessageRecord.fromJson(Map<String, dynamic>.from(item as Map)))
               .toList())
           .cast<MessageRecord>(),
-      settings: FamilySettings.fromJson(json['settings'] as Map<String, dynamic>?),
+      settings: FamilySettings.fromJson(json['settings'] as Map?),
     );
   }
 }

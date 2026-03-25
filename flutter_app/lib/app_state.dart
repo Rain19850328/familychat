@@ -566,9 +566,9 @@ class FamilyChatAppState extends ChangeNotifier {
       savedProfiles = (json['deviceProfiles'] as List<dynamic>? ?? const <dynamic>[])
           .map((item) => DeviceProfile.fromJson(Map<String, dynamic>.from(item as Map)))
           .toList();
-      final sessionJson = json['session'] as Map<String, dynamic>?;
-      if (sessionJson != null) {
-        session = AppSession.fromJson(sessionJson);
+      final sessionJson = json['session'];
+      if (sessionJson is Map) {
+        session = AppSession.fromJson(Map<String, dynamic>.from(sessionJson));
       }
     } catch (_) {
       savedProfiles = <DeviceProfile>[];
