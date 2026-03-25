@@ -2,3 +2,5 @@ node_modules/
 dist/
 actions-run-*/
 *.zip
+flutter-sdk/
+flutter-sdk-local/

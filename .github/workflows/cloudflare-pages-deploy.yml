@@ -7,7 +7,7 @@ on:
   workflow_dispatch:
 
 env:
-  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+  FLUTTER_VERSION: 3.41.5
 
 permissions:
   contents: read
@@ -21,16 +21,23 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v6
 
-      - name: Setup Node
-        uses: actions/setup-node@v6
+      - name: Setup Flutter
+        uses: subosito/flutter-action@v2
         with:
-          node-version: 22
+          flutter-version: ${{ env.FLUTTER_VERSION }}
+          channel: stable
 
-      - name: Verify Frontend
-        run: npm run verify:deploy
+      - name: Resolve Flutter Dependencies
+        working-directory: flutter_app
+        run: flutter pub get
 
-      - name: Build Static Artifact
-        run: npm run build:static
+      - name: Analyze Flutter App
+        working-directory: flutter_app
+        run: flutter analyze
+
+      - name: Build Flutter Web
+        working-directory: flutter_app
+        run: flutter build web --release
 
       - name: Deploy to Cloudflare Pages
         uses: cloudflare/wrangler-action@v3
@@ -38,4 +45,4 @@ jobs:
           apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
           gitHubToken: ${{ secrets.GITHUB_TOKEN }}
-          command: pages deploy dist --project-name=${{ vars.CLOUDFLARE_PAGES_PROJECT_NAME || github.event.repository.name }}
+          command: pages deploy flutter_app/build/web --project-name=${{ vars.CLOUDFLARE_PAGES_PROJECT_NAME || github.event.repository.name }}
