@@ -18,7 +18,30 @@
 
   <meta charset="UTF-8">
   <meta content="IE=Edge" http-equiv="X-UA-Compatible">
-  <meta name="description" content="초대 코드로만 연결되는 폐쇄형 가족 채팅 Flutter Web 앱입니다.">
+  <meta
+    name="description"
+    content="초대 코드로만 연결되는 가족 전용 채팅 Flutter Web 앱입니다."
+  >
+  <style>
+    :root {
+      --app-font-stack: "Pretendard Variable", "SUIT Variable", "Apple SD Gothic Neo", "Malgun Gothic", sans-serif;
+    }
+
+    html,
+    body {
+      font-family: var(--app-font-stack);
+    }
+
+    body,
+    flutter-view,
+    flt-glass-pane,
+    flt-semantics-host,
+    input,
+    textarea,
+    [contenteditable="true"] {
+      font-family: var(--app-font-stack) !important;
+    }
+  </style>
 
   <!-- iOS meta tags & icons -->
   <meta name="mobile-web-app-capable" content="yes">
@@ -36,17 +59,19 @@
   <script>
     if ('serviceWorker' in navigator) {
       window.addEventListener('load', async () => {
+        const shouldCleanupLegacyPwa = new URLSearchParams(window.location.search).get('cleanupLegacyFamilychatPwa') === '1';
+        if (!shouldCleanupLegacyPwa) {
+          return;
+        }
+
         try {
           const registrations = await navigator.serviceWorker.getRegistrations();
           for (const registration of registrations) {
             const scriptUrl = registration.active?.scriptURL || registration.installing?.scriptURL || registration.waiting?.scriptURL || '';
-            if (scriptUrl.includes('/service-worker.js')) {
+            const matchesLegacyWorker = new URL(scriptUrl, window.location.href).pathname.endsWith('/service-worker.js');
+            if (matchesLegacyWorker) {
               await registration.unregister();
             }
-          }
-          if ('caches' in window) {
-            const cacheKeys = await caches.keys();
-            await Promise.all(cacheKeys.map((key) => caches.delete(key)));
           }
         } catch (_) {
           // Ignore cleanup failures and continue bootstrapping Flutter.
