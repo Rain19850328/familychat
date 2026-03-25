@@ -4,7 +4,7 @@ import 'package:intl/intl.dart';
 import '../app_state.dart';
 import 'common.dart';
 
-class ChatPane extends StatelessWidget {
+class ChatPane extends StatefulWidget {
   const ChatPane({
     super.key,
     required this.appState,
@@ -17,7 +17,37 @@ class ChatPane extends StatelessWidget {
   final VoidCallback onOpenDrawer;
 
   @override
+  State<ChatPane> createState() => _ChatPaneState();
+}
+
+class _ChatPaneState extends State<ChatPane> {
+  late final FocusNode _composerFocusNode;
+
+  @override
+  void initState() {
+    super.initState();
+    _composerFocusNode = FocusNode();
+    _composerFocusNode.addListener(_syncComposerState);
+    widget.composerController.addListener(_syncComposerState);
+  }
+
+  @override
+  void dispose() {
+    widget.composerController.removeListener(_syncComposerState);
+    _composerFocusNode.removeListener(_syncComposerState);
+    widget.appState.setComposerActive(false);
+    _composerFocusNode.dispose();
+    super.dispose();
+  }
+
+  void _syncComposerState() {
+    final composing = widget.composerController.value.composing.isValid;
+    widget.appState.setComposerActive(_composerFocusNode.hasFocus || composing);
+  }
+
+  @override
   Widget build(BuildContext context) {
+    final appState = widget.appState;
     final family = appState.family;
     final member = appState.currentMember;
     final room = appState.activeRoom;
@@ -46,7 +76,7 @@ class ChatPane extends StatelessWidget {
                 children: [
                   if (MediaQuery.sizeOf(context).width < 980)
                     IconButton(
-                      onPressed: onOpenDrawer,
+                      onPressed: widget.onOpenDrawer,
                       icon: const Icon(Icons.menu_rounded),
                     ),
                   Expanded(
@@ -196,7 +226,8 @@ class ChatPane extends StatelessWidget {
                         ),
                         Expanded(
                           child: TextField(
-                            controller: composerController,
+                            focusNode: _composerFocusNode,
+                            controller: widget.composerController,
                             minLines: 1,
                             maxLines: 5,
                             decoration: const InputDecoration(
@@ -207,9 +238,9 @@ class ChatPane extends StatelessWidget {
                         ),
                         FilledButton(
                           onPressed: () async {
-                            final sent = await appState.sendMessage(composerController.text);
+                            final sent = await appState.sendMessage(widget.composerController.text);
                             if (sent) {
-                              composerController.clear();
+                              widget.composerController.clear();
                             }
                           },
                           child: const Text('전송'),

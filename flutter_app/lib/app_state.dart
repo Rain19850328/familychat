@@ -50,6 +50,8 @@ class FamilyChatAppState extends ChangeNotifier {
   RealtimeChannel? _familyChannel;
   Timer? _presenceTimer;
   Timer? _refreshTimer;
+  bool _composerActive = false;
+  bool _refreshQueuedWhileTyping = false;
 
   Future<void> bootstrap() async {
     _hydrateLocalState();
@@ -466,6 +468,17 @@ class FamilyChatAppState extends ChangeNotifier {
     notifyListeners();
   }
 
+  void setComposerActive(bool active) {
+    if (_composerActive == active) {
+      return;
+    }
+    _composerActive = active;
+    if (!active && _refreshQueuedWhileTyping) {
+      _refreshQueuedWhileTyping = false;
+      unawaited(refreshFamily(skipErrorToast: true));
+    }
+  }
+
   Future<void> _applyRemoteSession(RemoteSessionPayload payload) async {
     session = AppSession(
       familyId: payload.familyId,
@@ -529,6 +542,10 @@ class FamilyChatAppState extends ChangeNotifier {
                 value: current.familyId,
               ),
         callback: (_) {
+          if (_composerActive) {
+            _refreshQueuedWhileTyping = true;
+            return;
+          }
           unawaited(refreshFamily(skipErrorToast: true));
         },
       );
@@ -549,6 +566,10 @@ class FamilyChatAppState extends ChangeNotifier {
     _refreshTimer?.cancel();
     _refreshTimer = Timer.periodic(const Duration(seconds: 2), (_) {
       if (session != null && !isBusy) {
+        if (_composerActive) {
+          _refreshQueuedWhileTyping = true;
+          return;
+        }
         unawaited(refreshFamily(skipErrorToast: true));
       }
     });
