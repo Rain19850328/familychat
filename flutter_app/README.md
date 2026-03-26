@@ -1,17 +1,20 @@
-# familychat_flutter
+# FamilyChat Flutter Web
 
-A new Flutter project.
+실제 배포되는 프런트엔드 앱입니다.
 
-## Getting Started
+## 실행
 
-This project is a starting point for a Flutter application.
+```powershell
+..\flutter-sdk\bin\flutter.bat pub get
+..\flutter-sdk\bin\flutter.bat run -d chrome
+```
 
-A few resources to get you started if this is your first Flutter project:
+## 빌드
 
-- [Learn Flutter](https://docs.flutter.dev/get-started/learn-flutter)
-- [Write your first Flutter app](https://docs.flutter.dev/get-started/codelab)
-- [Flutter learning resources](https://docs.flutter.dev/reference/learning-resources)
+```powershell
+..\flutter-sdk\bin\flutter.bat build web --release
+```
 
-For help getting started with Flutter development, view the
-[online documentation](https://docs.flutter.dev/), which offers tutorials,
-samples, guidance on mobile development, and a full API reference.
+## 배포 경로
+
+GitHub Actions가 `flutter_app/build/web` 를 Cloudflare Pages로 배포합니다.

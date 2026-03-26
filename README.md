@@ -1,47 +1,35 @@
-# FamilyChat PWA
+# FamilyChat
 
-초대 코드 기반의 가족 전용 채팅 PWA입니다.
-이제 데이터 저장소는 브라우저 `localStorage` 대신 `Supabase Postgres`를 사용합니다.
+초대 코드로만 연결되는 가족 전용 채팅 앱입니다. 현재 프런트엔드는 Flutter Web이고, 백엔드는 Supabase를 사용합니다.
 
-## 반영된 내용
+## 구조
 
-- `Supabase` 테이블 스키마 추가
-- 가족 생성, 초대 코드 발급, 가족 참가, DM 생성, 메시지 전송, 읽음 처리, 무음 처리용 RPC 추가
-- 프론트엔드 상태를 `Supabase snapshot` 기준으로 동기화하도록 변경
-- 같은 가족 데이터 변경 시 `Supabase Realtime`으로 자동 새로고침
-- 로컬에는 현재 세션과 저장된 프로필만 유지
+- `flutter_app`: 실제 서비스되는 Flutter Web 앱
+- `supabase/migrations`: 데이터베이스 마이그레이션
+- `supabase/functions`: Edge Function
+- `.github/workflows`: Cloudflare Pages 및 Supabase 배포 워크플로
 
-## 파일
+## 로컬 실행
 
-- `supabase/migrations/20260317130258_remote_schema.sql`
-- `supabase.config.js`
-- `app.js`
-
-## 배포 순서
-
-1. 백엔드 DB 마이그레이션은 GitHub Actions `Deploy Supabase Migrations`로 반영합니다.
-2. `supabase.config.js`에 프론트에서 사용할 실제 `url`, `anonKey`를 입력합니다.
-3. 배포 전 정적 파일 검증을 실행합니다.
+저장소 루트에서:
 
 ```powershell
-npm run verify
+cd flutter_app
+..\flutter-sdk\bin\flutter.bat pub get
+..\flutter-sdk\bin\flutter.bat run -d chrome
 ```
 
-4. 운영용 설정까지 채웠다면 강한 검증을 실행합니다.
+릴리스 웹 빌드:
 
 ```powershell
-npm run verify:deploy
+cd flutter_app
+..\flutter-sdk\bin\flutter.bat build web --release
 ```
 
-5. 정적 서버 또는 프론트 호스팅에 배포합니다.
+## 배포
 
-```powershell
-npx serve .
-```
+- 프런트엔드: `.github/workflows/cloudflare-pages-deploy.yml`
+- DB 마이그레이션: `.github/workflows/supabase-deploy.yml`
+- Edge Function: `.github/workflows/supabase-functions-deploy.yml`
 
-## 참고
-
-- 현재 이미지 첨부는 `Supabase Storage`가 아니라 메시지 테이블의 `image_data_url` 컬럼에 저장됩니다.
-- 운영 환경에서는 이후 `Storage` 버킷으로 옮기는 편이 맞습니다.
-- 현재 권한 모델은 MVP 수준입니다. 익명 `anon key`로 RPC를 호출할 수 있으므로, 운영 전에는 `RLS`와 인증 전략을 별도로 정리해야 합니다.
-- `supabase.config.js`에 플레이스홀더가 남아 있으면 `npm run verify:deploy`가 실패합니다.
+`main` 브랜치에 푸시하면 Flutter Web 앱이 Cloudflare Pages로 배포됩니다.
