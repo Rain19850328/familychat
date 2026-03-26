@@ -211,6 +211,10 @@ class _ChatHeader extends StatelessWidget {
         ),
         IconButton.filledTonal(
           onPressed: onToggleMute,
+          style: IconButton.styleFrom(
+            backgroundColor: AppColors.lavenderDeep,
+            foregroundColor: Colors.white,
+          ),
           icon: Icon(
             isMuted
                 ? Icons.notifications_off_rounded
@@ -460,14 +464,13 @@ class _ComposerBar extends StatelessWidget {
                 focusNode: focusNode,
                 controller: controller,
                 minLines: 1,
-                maxLines: 5,
+                maxLines: 1,
                 decoration: const InputDecoration(
-                  hintText: '메시지를 입력해 주세요.',
-                  prefixIcon: Icon(Icons.favorite_rounded),
+                  hintText: '메세지입력',
                   border: InputBorder.none,
                   contentPadding: EdgeInsets.symmetric(
                     horizontal: 18,
-                    vertical: 16,
+                    vertical: 14,
                   ),
                 ),
               ),
@@ -480,9 +483,10 @@ class _ComposerBar extends StatelessWidget {
             style: IconButton.styleFrom(
               minimumSize: const Size(56, 56),
               backgroundColor: AppColors.pinkDeep,
+              foregroundColor: Colors.white,
             ),
             icon: Icon(
-              isSending ? Icons.more_horiz_rounded : Icons.send_rounded,
+              isSending ? Icons.more_horiz_rounded : Icons.near_me_rounded,
               size: 20,
             ),
             tooltip: '전송',
