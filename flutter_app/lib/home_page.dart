@@ -1,15 +1,13 @@
 import 'package:flutter/material.dart';
 
 import 'app_state.dart';
+import 'ui/design_tokens.dart';
 import 'widgets/chat_pane.dart';
 import 'widgets/onboarding_pane.dart';
 import 'widgets/sidebar.dart';
 
 class FamilyChatHome extends StatefulWidget {
-  const FamilyChatHome({
-    super.key,
-    required this.appState,
-  });
+  const FamilyChatHome({super.key, required this.appState});
 
   final FamilyChatAppState appState;
 
@@ -58,46 +56,77 @@ class _FamilyChatHomeState extends State<FamilyChatHome> {
 
     return Scaffold(
       key: _scaffoldKey,
-      drawer: isDesktop ? null : Drawer(child: Sidebar(appState: appState, onClose: () => Navigator.of(context).pop())),
-      body: Stack(
-        children: [
-          SafeArea(
-            child: appState.hasSession
-                ? (isDesktop
-                    ? Row(
-                        children: [
-                          SizedBox(width: 340, child: Sidebar(appState: appState)),
-                          const VerticalDivider(width: 1),
-                          Expanded(
-                            child: ChatPane(
-                              appState: appState,
-                              composerController: _composerController,
-                              onOpenDrawer: () {},
-                            ),
-                          ),
-                        ],
-                      )
-                    : ChatPane(
-                        appState: appState,
-                        composerController: _composerController,
-                        onOpenDrawer: () => _scaffoldKey.currentState?.openDrawer(),
-                      ))
-                : OnboardingPane(
-                    appState: appState,
-                    familyNameController: _familyNameController,
-                    adminNameController: _adminNameController,
-                    inviteCodeController: _inviteCodeController,
-                    memberNameController: _memberNameController,
-                  ),
-          ),
-          if (appState.isBusy)
-            Positioned.fill(
-              child: ColoredBox(
-                color: Colors.black.withValues(alpha: 0.08),
-                child: const Center(child: CircularProgressIndicator()),
+      backgroundColor: Colors.transparent,
+      drawerScrimColor: AppColors.plum.withValues(alpha: 0.18),
+      drawer: isDesktop
+          ? null
+          : Drawer(
+              child: SafeArea(
+                minimum: const EdgeInsets.all(10),
+                child: Sidebar(
+                  appState: appState,
+                  onClose: () => Navigator.of(context).pop(),
+                ),
               ),
             ),
-        ],
+      body: CozyBackdrop(
+        child: Stack(
+          children: <Widget>[
+            SafeArea(
+              child: Padding(
+                padding: const EdgeInsets.all(14),
+                child: appState.hasSession
+                    ? (isDesktop
+                          ? Row(
+                              children: <Widget>[
+                                SizedBox(
+                                  width: 360,
+                                  child: Sidebar(appState: appState),
+                                ),
+                                const SizedBox(width: 14),
+                                Expanded(
+                                  child: ChatPane(
+                                    appState: appState,
+                                    composerController: _composerController,
+                                    onOpenDrawer: () {},
+                                  ),
+                                ),
+                              ],
+                            )
+                          : ChatPane(
+                              appState: appState,
+                              composerController: _composerController,
+                              onOpenDrawer: () =>
+                                  _scaffoldKey.currentState?.openDrawer(),
+                            ))
+                    : OnboardingPane(
+                        appState: appState,
+                        familyNameController: _familyNameController,
+                        adminNameController: _adminNameController,
+                        inviteCodeController: _inviteCodeController,
+                        memberNameController: _memberNameController,
+                      ),
+              ),
+            ),
+            if (appState.isBusy)
+              Positioned.fill(
+                child: ColoredBox(
+                  color: AppColors.plum.withValues(alpha: 0.08),
+                  child: const Center(
+                    child: SizedBox(
+                      width: 56,
+                      height: 56,
+                      child: CircularProgressIndicator(
+                        strokeWidth: 4,
+                        color: AppColors.lavenderDeep,
+                        backgroundColor: AppColors.pink,
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+          ],
+        ),
       ),
     );
   }
