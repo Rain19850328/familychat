@@ -108,76 +108,71 @@ class _ChatPaneState extends State<ChatPane> {
     final messages = appState.activeMessages;
     final muted = room.mutedBy[member.id] == true;
 
-    return StitchedPanel(
-      color: AppColors.paper.withValues(alpha: 0.96),
-      padding: const EdgeInsets.all(16),
-      borderRadius: BorderRadius.circular(AppRadii.xl),
-      child: Column(
-        children: <Widget>[
-          _ChatHeader(
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: <Widget>[
+        Padding(
+          padding: const EdgeInsets.fromLTRB(4, 4, 4, 12),
+          child: _ChatHeader(
             title: roomTitle(room, family, member.id, family.members),
             isMuted: muted,
             onOpenDrawer: widget.onOpenDrawer,
             onToggleMute: appState.toggleMute,
           ),
-          const SizedBox(height: 16),
-          Expanded(
-            child: StitchedPanel(
-              color: const Color(0xFFFFF7FB),
-              padding: EdgeInsets.zero,
-              borderRadius: BorderRadius.circular(AppRadii.lg),
-              child: messages.isEmpty
-                  ? const _EmptyChatState()
-                  : ListView.separated(
-                      padding: const EdgeInsets.fromLTRB(18, 18, 18, 18),
-                      reverse: true,
-                      itemCount: messages.length,
-                      separatorBuilder: (context, index) =>
-                          const SizedBox(height: 12),
-                      itemBuilder: (context, index) {
-                        final message = messages[messages.length - 1 - index];
-                        final isMine = message.senderId == member.id;
-                        final sender = family.members
-                            .where((item) => item.id == message.senderId)
-                            .firstOrNull;
+        ),
+        Expanded(
+          child: messages.isEmpty
+              ? const _EmptyChatState()
+              : ListView.separated(
+                  padding: const EdgeInsets.fromLTRB(6, 8, 6, 8),
+                  reverse: true,
+                  itemCount: messages.length,
+                  separatorBuilder: (context, index) =>
+                      const SizedBox(height: 12),
+                  itemBuilder: (context, index) {
+                    final message = messages[messages.length - 1 - index];
+                    final isMine = message.senderId == member.id;
+                    final sender = family.members
+                        .where((item) => item.id == message.senderId)
+                        .firstOrNull;
 
-                        if (message.type == 'system') {
-                          return Center(
-                            child: CuteTag(
-                              label: message.text,
-                              icon: Icons.auto_awesome_rounded,
-                              color: AppColors.sky,
-                            ),
-                          );
-                        }
+                    if (message.type == 'system') {
+                      return Center(
+                        child: CuteTag(
+                          label: message.text,
+                          icon: Icons.auto_awesome_rounded,
+                          color: AppColors.sky,
+                        ),
+                      );
+                    }
 
-                        return _MessageBubble(
-                          message: message,
-                          senderName: sender?.name,
-                          isMine: isMine,
-                        );
-                      },
-                    ),
-            ),
-          ),
-          const SizedBox(height: 14),
-          if (appState.pendingImageDataUrl != null)
-            _PendingImageStrip(
+                    return _MessageBubble(
+                      message: message,
+                      senderName: sender?.name,
+                      isMine: isMine,
+                    );
+                  },
+                ),
+        ),
+        const SizedBox(height: 12),
+        if (appState.pendingImageDataUrl != null)
+          Padding(
+            padding: const EdgeInsets.only(bottom: 12),
+            child: _PendingImageStrip(
               imageUrl: appState.pendingImageDataUrl!,
               imageName: appState.pendingImageName ?? '선택한 이미지',
               onClear: appState.clearPendingImage,
             ),
-          if (appState.pendingImageDataUrl != null) const SizedBox(height: 12),
-          _ComposerBar(
-            focusNode: _composerFocusNode,
-            sendButtonFocusNode: _sendButtonFocusNode,
-            controller: widget.composerController,
-            isSending: _isSending,
-            onPickImage: _isSending ? null : appState.pickComposerImage,
-            onSend: _handleSendPressed,
           ),
-        ],
-      ),
+        _ComposerBar(
+          focusNode: _composerFocusNode,
+          sendButtonFocusNode: _sendButtonFocusNode,
+          controller: widget.composerController,
+          isSending: _isSending,
+          onPickImage: _isSending ? null : appState.pickComposerImage,
+          onSend: _handleSendPressed,
+        ),
+      ],
     );
   }
 }
@@ -198,58 +193,32 @@ class _ChatHeader extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final isCompact = MediaQuery.sizeOf(context).width < 980;
-    return StitchedPanel(
-      color: const Color(0xFFF7F0FF),
-      padding: const EdgeInsets.all(16),
-      child: Row(
-        children: <Widget>[
-          if (isCompact)
-            IconButton.filledTonal(
-              onPressed: onOpenDrawer,
-              icon: const Icon(Icons.menu_rounded),
-            ),
-          if (isCompact) const SizedBox(width: 10),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: <Widget>[
-                Wrap(
-                  spacing: 8,
-                  runSpacing: 8,
-                  children: const <Widget>[
-                    CuteTag(
-                      label: 'Room',
-                      icon: Icons.chat_bubble_rounded,
-                      color: AppColors.sky,
-                    ),
-                    CuteTag(
-                      label: 'soft chat',
-                      icon: Icons.favorite_rounded,
-                      color: AppColors.pink,
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 12),
-                Text(
-                  title,
-                  style: Theme.of(
-                    context,
-                  ).textTheme.headlineMedium?.copyWith(fontSize: 30),
-                ),
-              ],
-            ),
+    return Row(
+      children: <Widget>[
+        if (isCompact)
+          IconButton.filledTonal(
+            onPressed: onOpenDrawer,
+            icon: const Icon(Icons.menu_rounded),
           ),
-          FilledButton.tonalIcon(
-            onPressed: onToggleMute,
-            icon: Icon(
-              isMuted
-                  ? Icons.notifications_off_rounded
-                  : Icons.notifications_active_rounded,
-            ),
-            label: Text(isMuted ? '알림 꺼짐' : '알림 켜짐'),
+        if (isCompact) const SizedBox(width: 10),
+        Expanded(
+          child: Text(
+            title,
+            style: Theme.of(
+              context,
+            ).textTheme.headlineMedium?.copyWith(fontSize: 30),
           ),
-        ],
-      ),
+        ),
+        IconButton.filledTonal(
+          onPressed: onToggleMute,
+          icon: Icon(
+            isMuted
+                ? Icons.notifications_off_rounded
+                : Icons.notifications_active_rounded,
+          ),
+          tooltip: isMuted ? '알림 꺼짐' : '알림 켜짐',
+        ),
+      ],
     );
   }
 }
@@ -389,7 +358,7 @@ class _EmptyChatState extends StatelessWidget {
             ),
             const SizedBox(height: 10),
             Text(
-              '첫 메시지를 보내서 포근한 가족 채팅을 시작해 보세요.',
+              '첫 메시지를 보내서 가족 채팅을 시작해 보세요.',
               textAlign: TextAlign.center,
               style: Theme.of(context).textTheme.bodyLarge,
             ),
@@ -471,56 +440,54 @@ class _ComposerBar extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return StitchedPanel(
-      color: const Color(0xFFFFF9ED),
-      padding: const EdgeInsets.all(10),
-      borderRadius: BorderRadius.circular(AppRadii.xl),
-      child: TextFieldTapRegion(
-        child: Row(
-          crossAxisAlignment: CrossAxisAlignment.end,
-          children: <Widget>[
-            IconButton.filledTonal(
-              onPressed: onPickImage,
-              icon: const Icon(Icons.add_photo_alternate_rounded),
-            ),
-            const SizedBox(width: 8),
-            Expanded(
+    return TextFieldTapRegion(
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.end,
+        children: <Widget>[
+          IconButton.filledTonal(
+            onPressed: onPickImage,
+            icon: const Icon(Icons.add_photo_alternate_rounded),
+          ),
+          const SizedBox(width: 8),
+          Expanded(
+            child: DecoratedBox(
+              decoration: BoxDecoration(
+                color: const Color(0xFFFFF9ED),
+                borderRadius: BorderRadius.circular(AppRadii.xl),
+                boxShadow: AppShadows.plush,
+              ),
               child: TextField(
                 focusNode: focusNode,
                 controller: controller,
                 minLines: 1,
                 maxLines: 5,
                 decoration: const InputDecoration(
-                  hintText: '메시지를 입력해 주세요',
+                  hintText: '메시지를 입력해 주세요.',
                   prefixIcon: Icon(Icons.favorite_rounded),
                   border: InputBorder.none,
+                  contentPadding: EdgeInsets.symmetric(
+                    horizontal: 18,
+                    vertical: 16,
+                  ),
                 ),
               ),
             ),
-            const SizedBox(width: 8),
-            FilledButton(
-              focusNode: sendButtonFocusNode,
-              onPressed: isSending ? null : onSend,
-              style: FilledButton.styleFrom(
-                minimumSize: const Size(92, 56),
-                backgroundColor: AppColors.pinkDeep,
-              ),
-              child: Row(
-                mainAxisSize: MainAxisSize.min,
-                children: <Widget>[
-                  Icon(
-                    isSending
-                        ? Icons.more_horiz_rounded
-                        : Icons.send_rounded,
-                    size: 18,
-                  ),
-                  const SizedBox(width: 6),
-                  Text('전송'),
-                ],
-              ),
+          ),
+          const SizedBox(width: 8),
+          IconButton.filled(
+            focusNode: sendButtonFocusNode,
+            onPressed: isSending ? null : onSend,
+            style: IconButton.styleFrom(
+              minimumSize: const Size(56, 56),
+              backgroundColor: AppColors.pinkDeep,
             ),
-          ],
-        ),
+            icon: Icon(
+              isSending ? Icons.more_horiz_rounded : Icons.send_rounded,
+              size: 20,
+            ),
+            tooltip: '전송',
+          ),
+        ],
       ),
     );
   }
