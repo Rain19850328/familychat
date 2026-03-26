@@ -53,7 +53,9 @@ class _ChatPaneState extends State<ChatPane> {
   }
 
   Future<void> _handleSendPressed() async {
-    final sent = await widget.appState.sendMessage(widget.composerController.text);
+    final sent = await widget.appState.sendMessage(
+      widget.composerController.text,
+    );
     if (!sent || !mounted) {
       return;
     }
@@ -108,18 +110,28 @@ class _ChatPaneState extends State<ChatPane> {
                       children: [
                         const Text(
                           'Room',
-                          style: TextStyle(color: Color(0xFF4A746C), fontWeight: FontWeight.w700),
+                          style: TextStyle(
+                            color: Color(0xFF4A746C),
+                            fontWeight: FontWeight.w700,
+                          ),
                         ),
                         Text(
                           roomTitle(room, family, member.id, family.members),
-                          style: const TextStyle(fontSize: 28, fontWeight: FontWeight.w800),
+                          style: const TextStyle(
+                            fontSize: 28,
+                            fontWeight: FontWeight.w800,
+                          ),
                         ),
                       ],
                     ),
                   ),
                   FilledButton.tonalIcon(
                     onPressed: appState.toggleMute,
-                    icon: Icon(muted ? Icons.notifications_off_rounded : Icons.notifications_active_rounded),
+                    icon: Icon(
+                      muted
+                          ? Icons.notifications_off_rounded
+                          : Icons.notifications_active_rounded,
+                    ),
                     label: Text(muted ? '알림 꺼짐' : '알림 켜짐'),
                   ),
                 ],
@@ -133,16 +145,22 @@ class _ChatPaneState extends State<ChatPane> {
                     padding: const EdgeInsets.fromLTRB(18, 8, 18, 18),
                     reverse: true,
                     itemCount: messages.length,
-                    separatorBuilder: (context, index) => const SizedBox(height: 10),
+                    separatorBuilder: (context, index) =>
+                        const SizedBox(height: 10),
                     itemBuilder: (context, index) {
                       final message = messages[messages.length - 1 - index];
                       final isMine = message.senderId == member.id;
-                      final sender = family.members.where((item) => item.id == message.senderId).firstOrNull;
+                      final sender = family.members
+                          .where((item) => item.id == message.senderId)
+                          .firstOrNull;
 
                       if (message.type == 'system') {
                         return Center(
                           child: Container(
-                            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 14,
+                              vertical: 10,
+                            ),
                             decoration: BoxDecoration(
                               color: const Color(0xFFE7F4EE),
                               borderRadius: BorderRadius.circular(999),
@@ -153,12 +171,16 @@ class _ChatPaneState extends State<ChatPane> {
                       }
 
                       return Align(
-                        alignment: isMine ? Alignment.centerRight : Alignment.centerLeft,
+                        alignment: isMine
+                            ? Alignment.centerRight
+                            : Alignment.centerLeft,
                         child: ConstrainedBox(
                           constraints: const BoxConstraints(maxWidth: 560),
                           child: DecoratedBox(
                             decoration: BoxDecoration(
-                              color: isMine ? const Color(0xFF0E7A6B) : Colors.white,
+                              color: isMine
+                                  ? const Color(0xFF0E7A6B)
+                                  : Colors.white,
                               borderRadius: BorderRadius.circular(24),
                             ),
                             child: Padding(
@@ -171,26 +193,42 @@ class _ChatPaneState extends State<ChatPane> {
                                       padding: const EdgeInsets.only(bottom: 6),
                                       child: Text(
                                         sender.name,
-                                        style: const TextStyle(color: Color(0xFF4A746C), fontWeight: FontWeight.w700),
+                                        style: const TextStyle(
+                                          color: Color(0xFF4A746C),
+                                          fontWeight: FontWeight.w700,
+                                        ),
                                       ),
                                     ),
                                   if (message.imageDataUrl != null) ...[
                                     ClipRRect(
                                       borderRadius: BorderRadius.circular(18),
-                                      child: Image.network(message.imageDataUrl!, fit: BoxFit.cover),
+                                      child: Image.network(
+                                        message.imageDataUrl!,
+                                        fit: BoxFit.cover,
+                                      ),
                                     ),
-                                    if (message.text.isNotEmpty) const SizedBox(height: 10),
+                                    if (message.text.isNotEmpty)
+                                      const SizedBox(height: 10),
                                   ],
                                   if (message.text.isNotEmpty)
                                     Text(
                                       message.text,
-                                      style: TextStyle(color: isMine ? Colors.white : Colors.black87, height: 1.45),
+                                      style: TextStyle(
+                                        color: isMine
+                                            ? Colors.white
+                                            : Colors.black87,
+                                        height: 1.45,
+                                      ),
                                     ),
                                   const SizedBox(height: 8),
                                   Text(
-                                    DateFormat('M.d HH:mm').format(message.createdAt.toLocal()),
+                                    DateFormat(
+                                      'M.d HH:mm',
+                                    ).format(message.createdAt.toLocal()),
                                     style: TextStyle(
-                                      color: isMine ? Colors.white70 : Colors.black45,
+                                      color: isMine
+                                          ? Colors.white70
+                                          : Colors.black45,
                                       fontSize: 12,
                                     ),
                                   ),
@@ -222,7 +260,9 @@ class _ChatPaneState extends State<ChatPane> {
                           ),
                         ),
                         const SizedBox(width: 12),
-                        Expanded(child: Text(appState.pendingImageName ?? '선택한 이미지')),
+                        Expanded(
+                          child: Text(appState.pendingImageName ?? '선택한 이미지'),
+                        ),
                         IconButton(
                           onPressed: appState.clearPendingImage,
                           icon: const Icon(Icons.close),
@@ -235,36 +275,42 @@ class _ChatPaneState extends State<ChatPane> {
                     color: Colors.white,
                     borderRadius: BorderRadius.circular(28),
                     boxShadow: const [
-                      BoxShadow(color: Color(0x11000000), blurRadius: 18, offset: Offset(0, 8)),
+                      BoxShadow(
+                        color: Color(0x11000000),
+                        blurRadius: 18,
+                        offset: Offset(0, 8),
+                      ),
                     ],
                   ),
                   child: Padding(
                     padding: const EdgeInsets.all(10),
-                    child: Row(
-                      crossAxisAlignment: CrossAxisAlignment.end,
-                      children: [
-                        IconButton(
-                          onPressed: appState.pickComposerImage,
-                          icon: const Icon(Icons.add_photo_alternate_rounded),
-                        ),
-                        Expanded(
-                          child: TextField(
-                            focusNode: _composerFocusNode,
-                            controller: widget.composerController,
-                            minLines: 1,
-                            maxLines: 5,
-                            decoration: const InputDecoration(
-                              hintText: '메시지를 입력해 주세요',
-                              border: InputBorder.none,
+                    child: TextFieldTapRegion(
+                      child: Row(
+                        crossAxisAlignment: CrossAxisAlignment.end,
+                        children: [
+                          IconButton(
+                            onPressed: appState.pickComposerImage,
+                            icon: const Icon(Icons.add_photo_alternate_rounded),
+                          ),
+                          Expanded(
+                            child: TextField(
+                              focusNode: _composerFocusNode,
+                              controller: widget.composerController,
+                              minLines: 1,
+                              maxLines: 5,
+                              decoration: const InputDecoration(
+                                hintText: '메시지를 입력해 주세요',
+                                border: InputBorder.none,
+                              ),
                             ),
                           ),
-                        ),
-                        FilledButton(
-                          focusNode: _sendButtonFocusNode,
-                          onPressed: _handleSendPressed,
-                          child: const Text('전송'),
-                        ),
-                      ],
+                          FilledButton(
+                            focusNode: _sendButtonFocusNode,
+                            onPressed: _handleSendPressed,
+                            child: const Text('전송'),
+                          ),
+                        ],
+                      ),
                     ),
                   ),
                 ),
