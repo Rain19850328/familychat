@@ -22,11 +22,17 @@ class ChatPane extends StatefulWidget {
 
 class _ChatPaneState extends State<ChatPane> {
   late final FocusNode _composerFocusNode;
+  late final FocusNode _sendButtonFocusNode;
 
   @override
   void initState() {
     super.initState();
     _composerFocusNode = FocusNode();
+    _sendButtonFocusNode = FocusNode(
+      debugLabel: 'send-button',
+      canRequestFocus: false,
+      skipTraversal: true,
+    );
     _composerFocusNode.addListener(_syncComposerState);
     widget.composerController.addListener(_syncComposerState);
   }
@@ -36,6 +42,7 @@ class _ChatPaneState extends State<ChatPane> {
     widget.composerController.removeListener(_syncComposerState);
     _composerFocusNode.removeListener(_syncComposerState);
     widget.appState.setComposerActive(false);
+    _sendButtonFocusNode.dispose();
     _composerFocusNode.dispose();
     super.dispose();
   }
@@ -43,6 +50,22 @@ class _ChatPaneState extends State<ChatPane> {
   void _syncComposerState() {
     final composing = widget.composerController.value.composing.isValid;
     widget.appState.setComposerActive(_composerFocusNode.hasFocus || composing);
+  }
+
+  Future<void> _handleSendPressed() async {
+    final sent = await widget.appState.sendMessage(widget.composerController.text);
+    if (!sent || !mounted) {
+      return;
+    }
+
+    widget.composerController.clear();
+
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) {
+        return;
+      }
+      _composerFocusNode.requestFocus();
+    });
   }
 
   @override
@@ -237,12 +260,8 @@ class _ChatPaneState extends State<ChatPane> {
                           ),
                         ),
                         FilledButton(
-                          onPressed: () async {
-                            final sent = await appState.sendMessage(widget.composerController.text);
-                            if (sent) {
-                              widget.composerController.clear();
-                            }
-                          },
+                          focusNode: _sendButtonFocusNode,
+                          onPressed: _handleSendPressed,
                           child: const Text('전송'),
                         ),
                       ],
