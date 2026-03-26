@@ -14,7 +14,8 @@ const String kSupabaseUrl = String.fromEnvironment(
 );
 const String kSupabaseAnonKey = String.fromEnvironment(
   'SUPABASE_ANON_KEY',
-  defaultValue: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImNzYXJoaWR1cmZ4ZG1jd29yYnRrIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzM4MTIwNTgsImV4cCI6MjA4OTM4ODA1OH0.AW7mIgO0M_qk3xjrLkATrHO__HWFozcTyxjEIf-rjr8',
+  defaultValue:
+      'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImNzYXJoaWR1cmZ4ZG1jd29yYnRrIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzM4MTIwNTgsImV4cCI6MjA4OTM4ODA1OH0.AW7mIgO0M_qk3xjrLkATrHO__HWFozcTyxjEIf-rjr8',
 );
 
 const String _storageKey = 'familychat.flutter.closed.v1';
@@ -115,7 +116,9 @@ class FamilyChatAppState extends ChangeNotifier {
     if (room == null || snapshot == null) {
       return const <MessageRecord>[];
     }
-    return snapshot.messages.where((message) => message.roomId == room.id).toList();
+    return snapshot.messages
+        .where((message) => message.roomId == room.id)
+        .toList();
   }
 
   void clearToast() {
@@ -172,9 +175,10 @@ class FamilyChatAppState extends ChangeNotifier {
     }
 
     try {
-      final payload = await _rpcMap('app_get_family_snapshot', <String, dynamic>{
-        'p_family_id': current.familyId,
-      });
+      final payload = await _rpcMap(
+        'app_get_family_snapshot',
+        <String, dynamic>{'p_family_id': current.familyId},
+      );
       final snapshot = FamilySnapshot.fromJson(payload);
       final resolvedRoom = _resolveActiveRoomId(snapshot, current.activeRoomId);
       family = snapshot;
@@ -225,11 +229,12 @@ class FamilyChatAppState extends ChangeNotifier {
     }
 
     await _runBusy(() async {
-      final payload = await _rpcMap('app_get_or_create_dm_room', <String, dynamic>{
-        'p_family_id': snapshot.id,
-        'p_first_member_id': member.id,
-        'p_second_member_id': target.id,
-      });
+      final payload =
+          await _rpcMap('app_get_or_create_dm_room', <String, dynamic>{
+            'p_family_id': snapshot.id,
+            'p_first_member_id': member.id,
+            'p_second_member_id': target.id,
+          });
       final roomId = payload['id'] as String;
       session = session?.copyWith(activeRoomId: roomId);
       await _persistLocalState();
@@ -248,13 +253,31 @@ class FamilyChatAppState extends ChangeNotifier {
 
     final text = rawText.trim();
     final image = pendingImageDataUrl;
+    final imageName = pendingImageName;
     if (text.isEmpty && (image == null || image.isEmpty)) {
       _setToast('메시지나 이미지를 입력해 주세요.');
       return false;
     }
 
-    var sent = false;
-    await _runBusy(() async {
+    final optimisticMessageId =
+        'local-${DateTime.now().microsecondsSinceEpoch}';
+    final optimisticMessage = MessageRecord(
+      id: optimisticMessageId,
+      roomId: room.id,
+      familyId: snapshot.id,
+      senderId: member.id,
+      type: image != null ? 'image' : 'text',
+      text: text,
+      imageDataUrl: image,
+      createdAt: DateTime.now(),
+      readBy: <String, String>{member.id: DateTime.now().toIso8601String()},
+    );
+
+    pendingImageDataUrl = null;
+    pendingImageName = null;
+    _appendOptimisticMessage(optimisticMessage);
+
+    try {
       await _rpcMap('app_send_message', <String, dynamic>{
         'p_family_id': snapshot.id,
         'p_room_id': room.id,
@@ -263,15 +286,18 @@ class FamilyChatAppState extends ChangeNotifier {
         'p_text': text,
         'p_image_data_url': image ?? '',
       });
-      pendingImageDataUrl = null;
-      pendingImageName = null;
-      sent = true;
-      notifyListeners();
-      await touchCurrentMember();
-      await refreshFamily();
-      await markActiveRoomRead();
-    });
-    return sent;
+      unawaited(touchCurrentMember());
+      unawaited(refreshFamily(skipErrorToast: true));
+      unawaited(markActiveRoomRead());
+      return true;
+    } catch (error) {
+      pendingImageDataUrl = image;
+      pendingImageName = imageName;
+      _removeOptimisticMessage(optimisticMessageId);
+      errorMessage = _friendlyError(error, fallback: '?묒뾽???꾨즺?섏? 紐삵뻽?듬땲??');
+      _setToast(errorMessage!);
+      return false;
+    }
   }
 
   Future<void> pickComposerImage() async {
@@ -293,7 +319,9 @@ class FamilyChatAppState extends ChangeNotifier {
       _setToast('이미지를 읽지 못했습니다.');
       return;
     }
-    final mimeType = file.extension == null ? 'image/png' : 'image/${file.extension}';
+    final mimeType = file.extension == null
+        ? 'image/png'
+        : 'image/${file.extension}';
     pendingImageDataUrl = _toDataUrl(bytes, mimeType);
     pendingImageName = file.name;
     notifyListeners();
@@ -376,7 +404,9 @@ class FamilyChatAppState extends ChangeNotifier {
       _setToast('프로필 이미지를 읽지 못했습니다.');
       return;
     }
-    final mimeType = file.extension == null ? 'image/png' : 'image/${file.extension}';
+    final mimeType = file.extension == null
+        ? 'image/png'
+        : 'image/${file.extension}';
     profileDraftAvatarImageDataUrl = _toDataUrl(bytes, mimeType);
     profileDraftAvatarKey = null;
     notifyListeners();
@@ -395,23 +425,26 @@ class FamilyChatAppState extends ChangeNotifier {
     }
 
     await _runBusy(() async {
-      final updated = await _rpcMap('app_update_member_profile', <String, dynamic>{
-        'p_member_id': member.id,
-        'p_name': draftName,
-        'p_avatar_key': profileDraftAvatarKey ?? '',
-        'p_avatar_image_data_url': profileDraftAvatarImageDataUrl ?? '',
-      });
+      final updated =
+          await _rpcMap('app_update_member_profile', <String, dynamic>{
+            'p_member_id': member.id,
+            'p_name': draftName,
+            'p_avatar_key': profileDraftAvatarKey ?? '',
+            'p_avatar_image_data_url': profileDraftAvatarImageDataUrl ?? '',
+          });
 
-      _upsertProfile(DeviceProfile(
-        familyId: snapshot.id,
-        memberId: member.id,
-        familyName: snapshot.name,
-        memberName: updated['name'] as String? ?? draftName,
-        role: updated['role'] as String? ?? member.role,
-        avatarKey: updated['avatarKey'] as String?,
-        avatarImageDataUrl: updated['avatarImageDataUrl'] as String?,
-        savedAt: DateTime.now().toIso8601String(),
-      ));
+      _upsertProfile(
+        DeviceProfile(
+          familyId: snapshot.id,
+          memberId: member.id,
+          familyName: snapshot.name,
+          memberName: updated['name'] as String? ?? draftName,
+          role: updated['role'] as String? ?? member.role,
+          avatarKey: updated['avatarKey'] as String?,
+          avatarImageDataUrl: updated['avatarImageDataUrl'] as String?,
+          savedAt: DateTime.now().toIso8601String(),
+        ),
+      );
 
       await refreshFamily();
       _setToast('프로필을 저장했습니다.');
@@ -431,7 +464,10 @@ class FamilyChatAppState extends ChangeNotifier {
         'p_admin_member_id': member.id,
         'p_target_member_id': target.id,
       });
-      savedProfiles.removeWhere((profile) => profile.memberId == target.id && profile.familyId == snapshot.id);
+      savedProfiles.removeWhere(
+        (profile) =>
+            profile.memberId == target.id && profile.familyId == snapshot.id,
+      );
       await _persistLocalState();
       await refreshFamily();
       _setToast('${target.name}님을 탈퇴 처리했습니다.');
@@ -486,16 +522,18 @@ class FamilyChatAppState extends ChangeNotifier {
       activeRoomId: payload.activeRoomId,
     );
 
-    _upsertProfile(DeviceProfile(
-      familyId: payload.familyId,
-      memberId: payload.memberId,
-      familyName: payload.familyName,
-      memberName: payload.memberName,
-      role: payload.role,
-      avatarKey: payload.avatarKey,
-      avatarImageDataUrl: payload.avatarImageDataUrl,
-      savedAt: DateTime.now().toIso8601String(),
-    ));
+    _upsertProfile(
+      DeviceProfile(
+        familyId: payload.familyId,
+        memberId: payload.memberId,
+        familyName: payload.familyName,
+        memberName: payload.memberName,
+        role: payload.role,
+        avatarKey: payload.avatarKey,
+        avatarImageDataUrl: payload.avatarImageDataUrl,
+        savedAt: DateTime.now().toIso8601String(),
+      ),
+    );
 
     await _persistLocalState();
     notifyListeners();
@@ -590,12 +628,18 @@ class FamilyChatAppState extends ChangeNotifier {
     }
   }
 
-  Future<Map<String, dynamic>> _rpcMap(String functionName, Map<String, dynamic> params) async {
+  Future<Map<String, dynamic>> _rpcMap(
+    String functionName,
+    Map<String, dynamic> params,
+  ) async {
     final response = await _supabase.rpc(functionName, params: params);
     return Map<String, dynamic>.from(response as Map);
   }
 
-  Future<void> _rpcVoid(String functionName, Map<String, dynamic> params) async {
+  Future<void> _rpcVoid(
+    String functionName,
+    Map<String, dynamic> params,
+  ) async {
     await _supabase.rpc(functionName, params: params);
   }
 
@@ -607,9 +651,14 @@ class FamilyChatAppState extends ChangeNotifier {
 
     try {
       final json = jsonDecode(raw) as Map<String, dynamic>;
-      savedProfiles = (json['deviceProfiles'] as List<dynamic>? ?? const <dynamic>[])
-          .map((item) => DeviceProfile.fromJson(Map<String, dynamic>.from(item as Map)))
-          .toList();
+      savedProfiles =
+          (json['deviceProfiles'] as List<dynamic>? ?? const <dynamic>[])
+              .map(
+                (item) => DeviceProfile.fromJson(
+                  Map<String, dynamic>.from(item as Map),
+                ),
+              )
+              .toList();
       final sessionJson = json['session'];
       if (sessionJson is Map) {
         session = AppSession.fromJson(Map<String, dynamic>.from(sessionJson));
@@ -622,7 +671,9 @@ class FamilyChatAppState extends ChangeNotifier {
 
   Future<void> _persistLocalState() async {
     final payload = <String, dynamic>{
-      'deviceProfiles': savedProfiles.map((profile) => profile.toJson()).toList(),
+      'deviceProfiles': savedProfiles
+          .map((profile) => profile.toJson())
+          .toList(),
       'session': session?.toJson(),
     };
     await _prefs.setString(_storageKey, jsonEncode(payload));
@@ -643,19 +694,24 @@ class FamilyChatAppState extends ChangeNotifier {
       return;
     }
 
-    _upsertProfile(DeviceProfile(
-      familyId: snapshot.id,
-      memberId: member.id,
-      familyName: snapshot.name,
-      memberName: member.name,
-      role: member.role,
-      avatarKey: member.avatarKey,
-      avatarImageDataUrl: member.avatarImageDataUrl,
-      savedAt: DateTime.now().toIso8601String(),
-    ));
+    _upsertProfile(
+      DeviceProfile(
+        familyId: snapshot.id,
+        memberId: member.id,
+        familyName: snapshot.name,
+        memberName: member.name,
+        role: member.role,
+        avatarKey: member.avatarKey,
+        avatarImageDataUrl: member.avatarImageDataUrl,
+        savedAt: DateTime.now().toIso8601String(),
+      ),
+    );
   }
 
-  String? _resolveActiveRoomId(FamilySnapshot snapshot, String? preferredRoomId) {
+  String? _resolveActiveRoomId(
+    FamilySnapshot snapshot,
+    String? preferredRoomId,
+  ) {
     if (preferredRoomId != null) {
       for (final room in snapshot.rooms) {
         if (room.id == preferredRoomId) {
@@ -673,6 +729,46 @@ class FamilyChatAppState extends ChangeNotifier {
 
   void _setToast(String value) {
     toastMessage = value;
+    notifyListeners();
+  }
+
+  void _appendOptimisticMessage(MessageRecord message) {
+    final snapshot = family;
+    if (snapshot == null) {
+      return;
+    }
+
+    family = FamilySnapshot(
+      id: snapshot.id,
+      name: snapshot.name,
+      createdAt: snapshot.createdAt,
+      members: snapshot.members,
+      rooms: snapshot.rooms,
+      invites: snapshot.invites,
+      messages: <MessageRecord>[...snapshot.messages, message],
+      settings: snapshot.settings,
+    );
+    notifyListeners();
+  }
+
+  void _removeOptimisticMessage(String messageId) {
+    final snapshot = family;
+    if (snapshot == null) {
+      return;
+    }
+
+    family = FamilySnapshot(
+      id: snapshot.id,
+      name: snapshot.name,
+      createdAt: snapshot.createdAt,
+      members: snapshot.members,
+      rooms: snapshot.rooms,
+      invites: snapshot.invites,
+      messages: snapshot.messages
+          .where((message) => message.id != messageId)
+          .toList(),
+      settings: snapshot.settings,
+    );
     notifyListeners();
   }
 
