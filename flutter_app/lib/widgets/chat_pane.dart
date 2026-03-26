@@ -6,18 +6,13 @@ import '../models.dart';
 import '../ui/design_tokens.dart';
 import 'common.dart';
 
-const TextStyle _composerTextStyle = TextStyle(
-  fontFamily: 'Malgun Gothic',
-  fontFamilyFallback: <String>[
-    'Apple SD Gothic Neo',
-    'Noto Sans KR',
-    'Nanum Gothic',
-    'sans-serif',
-  ],
-  color: AppColors.ink,
-  fontSize: 16,
-  height: 1.2,
-);
+const List<String> _composerFontFallback = <String>[
+  'Apple SD Gothic Neo',
+  'Noto Sans KR',
+  'Malgun Gothic',
+  'Nanum Gothic',
+  'sans-serif',
+];
 
 class ChatPane extends StatefulWidget {
   const ChatPane({
@@ -65,7 +60,7 @@ class _ChatPaneState extends State<ChatPane> {
 
   void _syncComposerState() {
     final composing = widget.composerController.value.composing.isValid;
-    widget.appState.setComposerActive(_composerFocusNode.hasFocus || composing);
+    widget.appState.setComposerActive(composing);
   }
 
   Future<void> _handleSendPressed() async {
@@ -163,6 +158,7 @@ class _ChatPaneState extends State<ChatPane> {
                       message: message,
                       senderName: sender?.name,
                       isMine: isMine,
+                      currentMemberId: member.id,
                     );
                   },
                 ),
@@ -245,11 +241,13 @@ class _MessageBubble extends StatelessWidget {
     required this.message,
     required this.senderName,
     required this.isMine,
+    required this.currentMemberId,
   });
 
   final MessageRecord message;
   final String? senderName;
   final bool isMine;
+  final String currentMemberId;
 
   @override
   Widget build(BuildContext context) {
@@ -257,6 +255,7 @@ class _MessageBubble extends StatelessWidget {
         ? const Color(0xFFE6DAFF)
         : const Color(0xFFFFF4F8);
     final accent = isMine ? AppColors.lavenderDeep : AppColors.pinkDeep;
+    final readStatus = _readStatusLabel(message, currentMemberId);
 
     return Align(
       alignment: isMine ? Alignment.centerRight : Alignment.centerLeft,
@@ -313,14 +312,23 @@ class _MessageBubble extends StatelessWidget {
                       ),
                       const SizedBox(width: 6),
                       Text(
-                        DateFormat(
-                          'M.d HH:mm',
-                        ).format(message.createdAt.toLocal()),
+                        DateFormat('HH:mm').format(message.createdAt.toLocal()),
                         style: Theme.of(context).textTheme.bodyMedium?.copyWith(
                           fontSize: 12,
                           color: AppColors.inkSoft,
                         ),
                       ),
+                      if (readStatus != null) ...<Widget>[
+                        const SizedBox(width: 8),
+                        Text(
+                          readStatus,
+                          style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                            fontSize: 12,
+                            color: accent,
+                            fontWeight: FontWeight.w700,
+                          ),
+                        ),
+                      ],
                     ],
                   ),
                 ],
@@ -457,6 +465,16 @@ class _ComposerBar extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final composerTextStyle = _composerTextStyle(
+      Theme.of(context).platform,
+      color: AppColors.ink,
+      fontSize: 16,
+    );
+    final composerHintStyle = _composerTextStyle(
+      Theme.of(context).platform,
+      color: AppColors.inkSoft,
+      fontSize: 15,
+    );
     return TextFieldTapRegion(
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.end,
@@ -476,23 +494,12 @@ class _ComposerBar extends StatelessWidget {
               child: TextField(
                 focusNode: focusNode,
                 controller: controller,
-                style: _composerTextStyle,
+                style: composerTextStyle,
                 minLines: 1,
                 maxLines: 1,
-                decoration: const InputDecoration(
+                decoration: InputDecoration(
                   hintText: '메세지입력',
-                  hintStyle: TextStyle(
-                    fontFamily: 'Malgun Gothic',
-                    fontFamilyFallback: <String>[
-                      'Apple SD Gothic Neo',
-                      'Noto Sans KR',
-                      'Nanum Gothic',
-                      'sans-serif',
-                    ],
-                    color: AppColors.inkSoft,
-                    fontSize: 15,
-                    height: 1.2,
-                  ),
+                  hintStyle: composerHintStyle,
                   border: InputBorder.none,
                   contentPadding: EdgeInsets.symmetric(
                     horizontal: 18,
@@ -521,4 +528,37 @@ class _ComposerBar extends StatelessWidget {
       ),
     );
   }
+}
+
+String? _readStatusLabel(MessageRecord message, String currentMemberId) {
+  if (message.senderId == null || message.senderId != currentMemberId) {
+    return null;
+  }
+
+  final readCount = message.readBy.keys
+      .where((memberId) => memberId != message.senderId)
+      .length;
+  if (readCount <= 0) {
+    return '안읽음';
+  }
+  return readCount == 1 ? '읽음' : '읽음 $readCount';
+}
+
+TextStyle _composerTextStyle(
+  TargetPlatform platform, {
+  required Color color,
+  required double fontSize,
+}) {
+  return TextStyle(
+    fontFamily: switch (platform) {
+      TargetPlatform.iOS || TargetPlatform.macOS => 'Apple SD Gothic Neo',
+      TargetPlatform.android => 'Noto Sans KR',
+      TargetPlatform.windows => 'Malgun Gothic',
+      _ => 'sans-serif',
+    },
+    fontFamilyFallback: _composerFontFallback,
+    color: color,
+    fontSize: fontSize,
+    height: 1.2,
+  );
 }

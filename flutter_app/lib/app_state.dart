@@ -186,6 +186,10 @@ class FamilyChatAppState extends ChangeNotifier {
       _syncCurrentProfileFromSnapshot();
       await _persistLocalState();
       notifyListeners();
+      if (resolvedRoom != null &&
+          _hasUnreadMessages(snapshot, resolvedRoom, current.memberId)) {
+        unawaited(markActiveRoomRead());
+      }
     } catch (error) {
       if (!skipErrorToast) {
         _setToast(_friendlyError(error, fallback: '가족 정보를 불러오지 못했습니다.'));
@@ -580,10 +584,6 @@ class FamilyChatAppState extends ChangeNotifier {
                 value: current.familyId,
               ),
         callback: (_) {
-          if (_composerActive) {
-            _refreshQueuedWhileTyping = true;
-            return;
-          }
           unawaited(refreshFamily(skipErrorToast: true));
         },
       );
@@ -604,10 +604,6 @@ class FamilyChatAppState extends ChangeNotifier {
     _refreshTimer?.cancel();
     _refreshTimer = Timer.periodic(const Duration(seconds: 2), (_) {
       if (session != null && !isBusy) {
-        if (_composerActive) {
-          _refreshQueuedWhileTyping = true;
-          return;
-        }
         unawaited(refreshFamily(skipErrorToast: true));
       }
     });
@@ -725,6 +721,22 @@ class FamilyChatAppState extends ChangeNotifier {
       }
     }
     return snapshot.rooms.isNotEmpty ? snapshot.rooms.first.id : null;
+  }
+
+  bool _hasUnreadMessages(
+    FamilySnapshot snapshot,
+    String roomId,
+    String memberId,
+  ) {
+    for (final message in snapshot.messages) {
+      if (message.roomId != roomId || message.senderId == memberId) {
+        continue;
+      }
+      if (!message.readBy.containsKey(memberId)) {
+        return true;
+      }
+    }
+    return false;
   }
 
   void _setToast(String value) {
