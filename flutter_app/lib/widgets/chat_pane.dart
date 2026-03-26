@@ -6,6 +6,19 @@ import '../models.dart';
 import '../ui/design_tokens.dart';
 import 'common.dart';
 
+const TextStyle _composerTextStyle = TextStyle(
+  fontFamily: 'Malgun Gothic',
+  fontFamilyFallback: <String>[
+    'Apple SD Gothic Neo',
+    'Noto Sans KR',
+    'Nanum Gothic',
+    'sans-serif',
+  ],
+  color: AppColors.ink,
+  fontSize: 16,
+  height: 1.2,
+);
+
 class ChatPane extends StatefulWidget {
   const ChatPane({
     super.key,
@@ -463,10 +476,23 @@ class _ComposerBar extends StatelessWidget {
               child: TextField(
                 focusNode: focusNode,
                 controller: controller,
+                style: _composerTextStyle,
                 minLines: 1,
                 maxLines: 1,
                 decoration: const InputDecoration(
                   hintText: '메세지입력',
+                  hintStyle: TextStyle(
+                    fontFamily: 'Malgun Gothic',
+                    fontFamilyFallback: <String>[
+                      'Apple SD Gothic Neo',
+                      'Noto Sans KR',
+                      'Nanum Gothic',
+                      'sans-serif',
+                    ],
+                    color: AppColors.inkSoft,
+                    fontSize: 15,
+                    height: 1.2,
+                  ),
                   border: InputBorder.none,
                   contentPadding: EdgeInsets.symmetric(
                     horizontal: 18,
