@@ -520,8 +520,8 @@ class _ComposerBar extends StatelessWidget {
               foregroundColor: Colors.white,
             ),
             icon: Icon(
-              isSending ? Icons.more_horiz_rounded : Icons.near_me_rounded,
-              size: 20,
+              isSending ? Icons.more_horiz_rounded : Icons.send_rounded,
+              size: 24,
             ),
             tooltip: '전송',
           ),
