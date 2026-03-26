@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 
 import '../app_state.dart';
+import '../app_version.dart';
 import '../models.dart';
 import 'common.dart';
 
@@ -35,7 +36,36 @@ class Sidebar extends StatelessWidget {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      const Text('Family Space', style: TextStyle(color: Color(0xFF4A746C), fontWeight: FontWeight.w700)),
+                      Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          const Text(
+                            'Family Space',
+                            style: TextStyle(
+                              color: Color(0xFF4A746C),
+                              fontWeight: FontWeight.w700,
+                            ),
+                          ),
+                          const SizedBox(width: 8),
+                          Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                            decoration: BoxDecoration(
+                              color: const Color(0xFFDDEFE7),
+                              borderRadius: BorderRadius.circular(999),
+                              border: Border.all(color: const Color(0xFFB7D8CC)),
+                            ),
+                            child: const Text(
+                              kAppVersion,
+                              style: TextStyle(
+                                color: Color(0xFF2E5E55),
+                                fontSize: 11,
+                                fontWeight: FontWeight.w800,
+                                letterSpacing: 0.2,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
                       const SizedBox(height: 4),
                       Text(family.name, style: const TextStyle(fontSize: 28, fontWeight: FontWeight.w800)),
                     ],
