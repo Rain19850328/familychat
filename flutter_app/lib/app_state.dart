@@ -51,10 +51,13 @@ class FamilyChatAppState extends ChangeNotifier {
   RealtimeChannel? _familyChannel;
   Timer? _presenceTimer;
   Timer? _refreshTimer;
-  bool _composerActive = false;
-  bool _refreshQueuedWhileTyping = false;
+  Timer? _refreshDebounceTimer;
   final List<_QueuedSend> _queuedSends = <_QueuedSend>[];
   bool _isDrainingSendQueue = false;
+  bool _isRefreshingFamily = false;
+  bool _refreshRequestedAfterCurrent = false;
+  bool _isMarkingRoomRead = false;
+  bool _markRoomReadRequested = false;
 
   Future<void> bootstrap() async {
     _hydrateLocalState();
@@ -175,7 +178,13 @@ class FamilyChatAppState extends ChangeNotifier {
     if (current == null) {
       return;
     }
+    if (_isRefreshingFamily) {
+      _refreshRequestedAfterCurrent = true;
+      return;
+    }
 
+    _refreshDebounceTimer?.cancel();
+    _isRefreshingFamily = true;
     try {
       final payload = await _rpcMap(
         'app_get_family_snapshot',
@@ -207,6 +216,12 @@ class FamilyChatAppState extends ChangeNotifier {
     } catch (error) {
       if (!skipErrorToast) {
         _setToast(_friendlyError(error, fallback: '가족 정보를 불러오지 못했습니다.'));
+      }
+    } finally {
+      _isRefreshingFamily = false;
+      if (_refreshRequestedAfterCurrent) {
+        _refreshRequestedAfterCurrent = false;
+        _scheduleFamilyRefresh(immediate: true);
       }
     }
   }
@@ -345,12 +360,22 @@ class FamilyChatAppState extends ChangeNotifier {
   }
 
   Future<void> markActiveRoomRead() async {
+    final snapshot = family;
     final member = currentMember;
     final room = activeRoom;
-    if (member == null || room == null) {
+    if (snapshot == null || member == null || room == null) {
+      return;
+    }
+    if (!_hasUnreadMessages(snapshot, room.id, member.id)) {
+      return;
+    }
+    if (_isMarkingRoomRead) {
+      _markRoomReadRequested = true;
       return;
     }
 
+    _isMarkingRoomRead = true;
+    _markRoomReadLocally(room.id, member.id);
     try {
       await _rpcVoid('app_mark_room_read', <String, dynamic>{
         'p_room_id': room.id,
@@ -358,6 +383,12 @@ class FamilyChatAppState extends ChangeNotifier {
       });
     } catch (_) {
       // Ignore read marker failures.
+    } finally {
+      _isMarkingRoomRead = false;
+      if (_markRoomReadRequested) {
+        _markRoomReadRequested = false;
+        unawaited(markActiveRoomRead());
+      }
     }
   }
 
@@ -507,6 +538,8 @@ class FamilyChatAppState extends ChangeNotifier {
     _presenceTimer = null;
     _refreshTimer?.cancel();
     _refreshTimer = null;
+    _refreshDebounceTimer?.cancel();
+    _refreshDebounceTimer = null;
     family = null;
     session = null;
     pendingImageDataUrl = null;
@@ -515,15 +548,8 @@ class FamilyChatAppState extends ChangeNotifier {
     notifyListeners();
   }
 
-  void setComposerActive(bool active) {
-    if (_composerActive == active) {
-      return;
-    }
-    _composerActive = active;
-    if (!active && _refreshQueuedWhileTyping) {
-      _refreshQueuedWhileTyping = false;
-      unawaited(refreshFamily(skipErrorToast: true));
-    }
+  void setComposerActive(bool _) {
+    // Composition state is tracked in the widget for IME behavior.
   }
 
   Future<void> _applyRemoteSession(RemoteSessionPayload payload) async {
@@ -591,7 +617,7 @@ class FamilyChatAppState extends ChangeNotifier {
                 value: current.familyId,
               ),
         callback: (_) {
-          unawaited(refreshFamily(skipErrorToast: true));
+          _scheduleFamilyRefresh();
         },
       );
     }
@@ -609,9 +635,9 @@ class FamilyChatAppState extends ChangeNotifier {
 
   void _startRefreshTimer() {
     _refreshTimer?.cancel();
-    _refreshTimer = Timer.periodic(const Duration(seconds: 2), (_) {
+    _refreshTimer = Timer.periodic(const Duration(seconds: 15), (_) {
       if (session != null && !isBusy) {
-        unawaited(refreshFamily(skipErrorToast: true));
+        _scheduleFamilyRefresh();
       }
     });
   }
@@ -747,8 +773,15 @@ class FamilyChatAppState extends ChangeNotifier {
   }
 
   List<MessageRecord> _pendingMessagesForSnapshot(FamilySnapshot snapshot) {
+    final snapshotMessageIds = snapshot.messages
+        .map((message) => message.id)
+        .toSet();
     return _queuedSends
-        .where((item) => item.familyId == snapshot.id)
+        .where(
+          (item) =>
+              item.familyId == snapshot.id &&
+              !snapshotMessageIds.contains(item.optimisticMessage.id),
+        )
         .map((item) => item.optimisticMessage)
         .toList();
   }
@@ -770,18 +803,11 @@ class FamilyChatAppState extends ChangeNotifier {
     while (_queuedSends.isNotEmpty) {
       final queued = _queuedSends.first;
       try {
-        await _rpcMap('app_send_message', <String, dynamic>{
-          'p_family_id': queued.familyId,
-          'p_room_id': queued.roomId,
-          'p_sender_id': queued.senderId,
-          'p_message_type': queued.messageType,
-          'p_text': queued.text,
-          'p_image_data_url': queued.imageDataUrl ?? '',
-        });
+        await _sendQueuedMessage(queued);
         _queuedSends.removeAt(0);
-        unawaited(touchCurrentMember());
-        unawaited(refreshFamily(skipErrorToast: true));
-        unawaited(markActiveRoomRead());
+        if (_queuedSends.isEmpty) {
+          unawaited(touchCurrentMember());
+        }
       } catch (error) {
         _queuedSends.removeAt(0);
         if (queued.imageDataUrl != null &&
@@ -796,6 +822,112 @@ class FamilyChatAppState extends ChangeNotifier {
       }
     }
     _isDrainingSendQueue = false;
+  }
+
+  Future<void> _sendQueuedMessage(_QueuedSend queued) async {
+    Object? lastError;
+    for (var attempt = 0; attempt < 3; attempt++) {
+      try {
+        await _rpcMap('app_send_message', <String, dynamic>{
+          'p_family_id': queued.familyId,
+          'p_room_id': queued.roomId,
+          'p_sender_id': queued.senderId,
+          'p_message_type': queued.messageType,
+          'p_text': queued.text,
+          'p_image_data_url': queued.imageDataUrl ?? '',
+          'p_client_message_id': queued.optimisticMessage.id,
+        });
+        return;
+      } catch (error) {
+        lastError = error;
+        if (!_shouldRetryQueuedSend(error) || attempt == 2) {
+          rethrow;
+        }
+        await Future<void>.delayed(Duration(milliseconds: 400 * (attempt + 1)));
+      }
+    }
+
+    if (lastError != null) {
+      throw lastError;
+    }
+  }
+
+  void _scheduleFamilyRefresh({bool immediate = false}) {
+    if (session == null) {
+      return;
+    }
+    if (immediate) {
+      _refreshDebounceTimer?.cancel();
+      unawaited(refreshFamily(skipErrorToast: true));
+      return;
+    }
+    if (_refreshDebounceTimer?.isActive ?? false) {
+      return;
+    }
+    _refreshDebounceTimer = Timer(const Duration(milliseconds: 350), () {
+      if (session != null && !isBusy) {
+        unawaited(refreshFamily(skipErrorToast: true));
+      }
+    });
+  }
+
+  bool _shouldRetryQueuedSend(Object error) {
+    final text = error.toString().toLowerCase();
+    return text.contains('statement timeout') ||
+        text.contains('upstream request') ||
+        text.contains('request timeout') ||
+        text.contains('gateway timeout') ||
+        text.contains('timed out') ||
+        text.contains('timeout') ||
+        text.contains('cancelled') ||
+        text.contains('temporarily unavailable') ||
+        text.contains('connection closed') ||
+        text.contains('network');
+  }
+
+  void _markRoomReadLocally(String roomId, String memberId) {
+    final snapshot = family;
+    if (snapshot == null) {
+      return;
+    }
+
+    final readAt = DateTime.now().toIso8601String();
+    var changed = false;
+    final updatedMessages = snapshot.messages.map((message) {
+      if (message.roomId != roomId ||
+          message.senderId == memberId ||
+          message.readBy.containsKey(memberId)) {
+        return message;
+      }
+      changed = true;
+      return MessageRecord(
+        id: message.id,
+        roomId: message.roomId,
+        familyId: message.familyId,
+        senderId: message.senderId,
+        type: message.type,
+        text: message.text,
+        imageDataUrl: message.imageDataUrl,
+        createdAt: message.createdAt,
+        readBy: <String, String>{...message.readBy, memberId: readAt},
+      );
+    }).toList();
+
+    if (!changed) {
+      return;
+    }
+
+    family = FamilySnapshot(
+      id: snapshot.id,
+      name: snapshot.name,
+      createdAt: snapshot.createdAt,
+      members: snapshot.members,
+      rooms: snapshot.rooms,
+      invites: snapshot.invites,
+      messages: updatedMessages,
+      settings: snapshot.settings,
+    );
+    notifyListeners();
   }
 
   void _appendOptimisticMessage(MessageRecord message) {
@@ -840,6 +972,9 @@ class FamilyChatAppState extends ChangeNotifier {
 
   String _friendlyError(Object error, {required String fallback}) {
     final text = error.toString();
+    if (_shouldRetryQueuedSend(error)) {
+      return '서버 응답이 지연되고 있습니다. 잠시 후 다시 시도해 주세요.';
+    }
     if (text.contains('message:')) {
       final match = RegExp(r'message: ([^,}]+)').firstMatch(text);
       if (match != null) {
@@ -859,6 +994,7 @@ class FamilyChatAppState extends ChangeNotifier {
     _familyChannel?.unsubscribe();
     _presenceTimer?.cancel();
     _refreshTimer?.cancel();
+    _refreshDebounceTimer?.cancel();
     super.dispose();
   }
 }
