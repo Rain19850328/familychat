@@ -616,8 +616,10 @@ class FamilyChatAppState extends ChangeNotifier {
                 column: 'family_id',
                 value: current.familyId,
               ),
-        callback: (_) {
-          _scheduleFamilyRefresh();
+        callback: (payload) {
+          if (!_applyRealtimePayload(payload)) {
+            _scheduleFamilyRefresh();
+          }
         },
       );
     }
@@ -635,11 +637,71 @@ class FamilyChatAppState extends ChangeNotifier {
 
   void _startRefreshTimer() {
     _refreshTimer?.cancel();
-    _refreshTimer = Timer.periodic(const Duration(seconds: 15), (_) {
+    _refreshTimer = Timer.periodic(const Duration(seconds: 30), (_) {
       if (session != null && !isBusy) {
         _scheduleFamilyRefresh();
       }
     });
+  }
+
+  bool _applyRealtimePayload(PostgresChangePayload payload) {
+    if (family == null) {
+      return false;
+    }
+
+    switch (payload.table) {
+      case 'messages':
+        return _applyRealtimeMessagePayload(payload);
+      case 'message_reads':
+        return _applyRealtimeReadPayload(payload);
+      default:
+        return false;
+    }
+  }
+
+  bool _applyRealtimeMessagePayload(PostgresChangePayload payload) {
+    if (payload.eventType == PostgresChangeEvent.delete) {
+      return false;
+    }
+
+    final message = _messageFromRealtimeRecord(
+      payload.newRecord,
+      fallbackTimestamp: payload.commitTimestamp,
+    );
+    if (message == null) {
+      return false;
+    }
+
+    final changed = _upsertRealtimeMessage(message);
+    final member = currentMember;
+    final room = activeRoom;
+    if (changed &&
+        member != null &&
+        room != null &&
+        room.id == message.roomId &&
+        message.senderId != null &&
+        message.senderId != member.id) {
+      unawaited(markActiveRoomRead());
+    }
+    return changed;
+  }
+
+  bool _applyRealtimeReadPayload(PostgresChangePayload payload) {
+    if (payload.eventType == PostgresChangeEvent.delete) {
+      return false;
+    }
+
+    final record = payload.newRecord;
+    final messageId = record['message_id']?.toString();
+    final memberId = record['member_id']?.toString();
+    if (messageId == null || memberId == null) {
+      return false;
+    }
+
+    final readAt =
+        record['read_at']?.toString() ??
+        payload.commitTimestamp.toIso8601String();
+    return _applyMessageReadLocally(messageId, memberId, readAt);
   }
 
   Future<void> _runBusy(Future<void> Function() operation) async {
@@ -885,6 +947,108 @@ class FamilyChatAppState extends ChangeNotifier {
         text.contains('network');
   }
 
+  MessageRecord? _messageFromRealtimeRecord(
+    Map<String, dynamic> record, {
+    required DateTime fallbackTimestamp,
+  }) {
+    final id = record['id']?.toString();
+    final roomId = record['room_id']?.toString();
+    final familyId = record['family_id']?.toString();
+    if (id == null || roomId == null || familyId == null) {
+      return null;
+    }
+
+    final createdAt =
+        DateTime.tryParse(record['created_at']?.toString() ?? '') ??
+        fallbackTimestamp;
+    final senderId = record['sender_id']?.toString();
+    final initialReadBy = <String, String>{};
+    if (senderId != null && senderId.isNotEmpty) {
+      initialReadBy[senderId] = createdAt.toIso8601String();
+    }
+
+    return MessageRecord(
+      id: id,
+      roomId: roomId,
+      familyId: familyId,
+      senderId: senderId,
+      type: record['type']?.toString() ?? 'text',
+      text: record['text']?.toString() ?? '',
+      imageDataUrl: record['image_data_url']?.toString(),
+      createdAt: createdAt,
+      readBy: initialReadBy,
+    );
+  }
+
+  bool _upsertRealtimeMessage(MessageRecord message) {
+    final snapshot = family;
+    if (snapshot == null) {
+      return false;
+    }
+
+    final updatedMessages = List<MessageRecord>.from(snapshot.messages);
+    final index = updatedMessages.indexWhere((item) => item.id == message.id);
+    if (index >= 0) {
+      final existing = updatedMessages[index];
+      updatedMessages[index] = MessageRecord(
+        id: message.id,
+        roomId: message.roomId,
+        familyId: message.familyId,
+        senderId: message.senderId,
+        type: message.type,
+        text: message.text,
+        imageDataUrl: message.imageDataUrl,
+        createdAt: message.createdAt,
+        readBy: <String, String>{...message.readBy, ...existing.readBy},
+      );
+    } else {
+      updatedMessages.add(message);
+    }
+
+    updatedMessages.sort(
+      (left, right) => left.createdAt.compareTo(right.createdAt),
+    );
+    _replaceFamilyMessages(snapshot, updatedMessages);
+    return true;
+  }
+
+  bool _applyMessageReadLocally(
+    String messageId,
+    String memberId,
+    String readAt,
+  ) {
+    final snapshot = family;
+    if (snapshot == null) {
+      return false;
+    }
+
+    var changed = false;
+    final updatedMessages = snapshot.messages.map((message) {
+      if (message.id != messageId || message.readBy.containsKey(memberId)) {
+        return message;
+      }
+      changed = true;
+      return MessageRecord(
+        id: message.id,
+        roomId: message.roomId,
+        familyId: message.familyId,
+        senderId: message.senderId,
+        type: message.type,
+        text: message.text,
+        imageDataUrl: message.imageDataUrl,
+        createdAt: message.createdAt,
+        readBy: <String, String>{...message.readBy, memberId: readAt},
+      );
+    }).toList();
+
+    if (!changed) {
+      return false;
+    }
+
+    _replaceFamilyMessages(snapshot, updatedMessages);
+    return true;
+  }
+
   void _markRoomReadLocally(String roomId, String memberId) {
     final snapshot = family;
     if (snapshot == null) {
@@ -917,6 +1081,13 @@ class FamilyChatAppState extends ChangeNotifier {
       return;
     }
 
+    _replaceFamilyMessages(snapshot, updatedMessages);
+  }
+
+  void _replaceFamilyMessages(
+    FamilySnapshot snapshot,
+    List<MessageRecord> messages,
+  ) {
     family = FamilySnapshot(
       id: snapshot.id,
       name: snapshot.name,
@@ -924,7 +1095,7 @@ class FamilyChatAppState extends ChangeNotifier {
       members: snapshot.members,
       rooms: snapshot.rooms,
       invites: snapshot.invites,
-      messages: updatedMessages,
+      messages: messages,
       settings: snapshot.settings,
     );
     notifyListeners();
