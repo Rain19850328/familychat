@@ -322,11 +322,12 @@ class _MessageBubble extends StatelessWidget {
                         const SizedBox(width: 8),
                         Text(
                           readStatus,
-                          style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                            fontSize: 12,
-                            color: accent,
-                            fontWeight: FontWeight.w700,
-                          ),
+                          style: Theme.of(context).textTheme.bodyMedium
+                              ?.copyWith(
+                                fontSize: 12,
+                                color: accent,
+                                fontWeight: FontWeight.w700,
+                              ),
                         ),
                       ],
                     ],

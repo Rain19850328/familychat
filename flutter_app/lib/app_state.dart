@@ -53,6 +53,8 @@ class FamilyChatAppState extends ChangeNotifier {
   Timer? _refreshTimer;
   bool _composerActive = false;
   bool _refreshQueuedWhileTyping = false;
+  final List<_QueuedSend> _queuedSends = <_QueuedSend>[];
+  bool _isDrainingSendQueue = false;
 
   Future<void> bootstrap() async {
     _hydrateLocalState();
@@ -181,7 +183,19 @@ class FamilyChatAppState extends ChangeNotifier {
       );
       final snapshot = FamilySnapshot.fromJson(payload);
       final resolvedRoom = _resolveActiveRoomId(snapshot, current.activeRoomId);
-      family = snapshot;
+      family = FamilySnapshot(
+        id: snapshot.id,
+        name: snapshot.name,
+        createdAt: snapshot.createdAt,
+        members: snapshot.members,
+        rooms: snapshot.rooms,
+        invites: snapshot.invites,
+        messages: <MessageRecord>[
+          ...snapshot.messages,
+          ..._pendingMessagesForSnapshot(snapshot),
+        ],
+        settings: snapshot.settings,
+      );
       session = current.copyWith(activeRoomId: resolvedRoom);
       _syncCurrentProfileFromSnapshot();
       await _persistLocalState();
@@ -281,27 +295,20 @@ class FamilyChatAppState extends ChangeNotifier {
     pendingImageName = null;
     _appendOptimisticMessage(optimisticMessage);
 
-    try {
-      await _rpcMap('app_send_message', <String, dynamic>{
-        'p_family_id': snapshot.id,
-        'p_room_id': room.id,
-        'p_sender_id': member.id,
-        'p_message_type': image != null ? 'image' : 'text',
-        'p_text': text,
-        'p_image_data_url': image ?? '',
-      });
-      unawaited(touchCurrentMember());
-      unawaited(refreshFamily(skipErrorToast: true));
-      unawaited(markActiveRoomRead());
-      return true;
-    } catch (error) {
-      pendingImageDataUrl = image;
-      pendingImageName = imageName;
-      _removeOptimisticMessage(optimisticMessageId);
-      errorMessage = _friendlyError(error, fallback: '?묒뾽???꾨즺?섏? 紐삵뻽?듬땲??');
-      _setToast(errorMessage!);
-      return false;
-    }
+    _queuedSends.add(
+      _QueuedSend(
+        familyId: snapshot.id,
+        roomId: room.id,
+        senderId: member.id,
+        messageType: image != null ? 'image' : 'text',
+        text: text,
+        imageDataUrl: image,
+        imageName: imageName,
+        optimisticMessage: optimisticMessage,
+      ),
+    );
+    _startSendQueue();
+    return true;
   }
 
   Future<void> pickComposerImage() async {
@@ -739,9 +746,56 @@ class FamilyChatAppState extends ChangeNotifier {
     return false;
   }
 
+  List<MessageRecord> _pendingMessagesForSnapshot(FamilySnapshot snapshot) {
+    return _queuedSends
+        .where((item) => item.familyId == snapshot.id)
+        .map((item) => item.optimisticMessage)
+        .toList();
+  }
+
   void _setToast(String value) {
     toastMessage = value;
     notifyListeners();
+  }
+
+  void _startSendQueue() {
+    if (_isDrainingSendQueue) {
+      return;
+    }
+    _isDrainingSendQueue = true;
+    unawaited(_drainSendQueue());
+  }
+
+  Future<void> _drainSendQueue() async {
+    while (_queuedSends.isNotEmpty) {
+      final queued = _queuedSends.first;
+      try {
+        await _rpcMap('app_send_message', <String, dynamic>{
+          'p_family_id': queued.familyId,
+          'p_room_id': queued.roomId,
+          'p_sender_id': queued.senderId,
+          'p_message_type': queued.messageType,
+          'p_text': queued.text,
+          'p_image_data_url': queued.imageDataUrl ?? '',
+        });
+        _queuedSends.removeAt(0);
+        unawaited(touchCurrentMember());
+        unawaited(refreshFamily(skipErrorToast: true));
+        unawaited(markActiveRoomRead());
+      } catch (error) {
+        _queuedSends.removeAt(0);
+        if (queued.imageDataUrl != null &&
+            pendingImageDataUrl == null &&
+            pendingImageName == null) {
+          pendingImageDataUrl = queued.imageDataUrl;
+          pendingImageName = queued.imageName;
+        }
+        _removeOptimisticMessage(queued.optimisticMessage.id);
+        errorMessage = _friendlyError(error, fallback: '메시지를 보내지 못했습니다.');
+        _setToast(errorMessage!);
+      }
+    }
+    _isDrainingSendQueue = false;
   }
 
   void _appendOptimisticMessage(MessageRecord message) {
@@ -807,4 +861,26 @@ class FamilyChatAppState extends ChangeNotifier {
     _refreshTimer?.cancel();
     super.dispose();
   }
+}
+
+class _QueuedSend {
+  const _QueuedSend({
+    required this.familyId,
+    required this.roomId,
+    required this.senderId,
+    required this.messageType,
+    required this.text,
+    required this.imageDataUrl,
+    required this.imageName,
+    required this.optimisticMessage,
+  });
+
+  final String familyId;
+  final String roomId;
+  final String senderId;
+  final String messageType;
+  final String text;
+  final String? imageDataUrl;
+  final String? imageName;
+  final MessageRecord optimisticMessage;
 }
