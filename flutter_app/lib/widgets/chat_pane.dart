@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 
@@ -550,13 +551,14 @@ TextStyle _composerTextStyle(
   required Color color,
   required double fontSize,
 }) {
+  final fontFamily = switch (platform) {
+    TargetPlatform.iOS || TargetPlatform.macOS => 'Apple SD Gothic Neo',
+    TargetPlatform.android => 'Noto Sans KR',
+    TargetPlatform.windows => 'Malgun Gothic',
+    _ => null,
+  };
   return TextStyle(
-    fontFamily: switch (platform) {
-      TargetPlatform.iOS || TargetPlatform.macOS => 'Apple SD Gothic Neo',
-      TargetPlatform.android => 'Noto Sans KR',
-      TargetPlatform.windows => 'Malgun Gothic',
-      _ => 'sans-serif',
-    },
+    fontFamily: kIsWeb ? null : fontFamily,
     fontFamilyFallback: _composerFontFallback,
     color: color,
     fontSize: fontSize,

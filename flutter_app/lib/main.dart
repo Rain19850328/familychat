@@ -36,20 +36,15 @@ class FamilyChatApp extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return AnimatedBuilder(
-      animation: appState,
-      builder: (context, _) {
-        return MaterialApp(
-          title: '우리 가족 채팅',
-          debugShowCheckedModeBanner: false,
-          theme: buildFamilyTheme(
-            textTheme: ThemeData.light(useMaterial3: true).textTheme,
-            fontFamily: _appFontFamily,
-            fontFallback: _appFontFallback,
-          ),
-          home: FamilyChatHome(appState: appState),
-        );
-      },
+    return MaterialApp(
+      title: '우리 가족 채팅',
+      debugShowCheckedModeBanner: false,
+      theme: buildFamilyTheme(
+        textTheme: ThemeData.light(useMaterial3: true).textTheme,
+        fontFamily: _appFontFamily,
+        fontFallback: _appFontFallback,
+      ),
+      home: FamilyChatHome(appState: appState),
     );
   }
 }

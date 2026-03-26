@@ -41,6 +41,9 @@ class _FamilyChatHomeState extends State<FamilyChatHome> {
   }
 
   void _handleStateChange() {
+    if (mounted) {
+      setState(() {});
+    }
     final toast = widget.appState.toastMessage;
     if (!mounted || toast == null || toast.isEmpty) {
       return;
