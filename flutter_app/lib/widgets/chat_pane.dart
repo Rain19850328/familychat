@@ -25,6 +25,7 @@ class ChatPane extends StatefulWidget {
 class _ChatPaneState extends State<ChatPane> {
   late final FocusNode _composerFocusNode;
   late final FocusNode _sendButtonFocusNode;
+  bool _isSending = false;
 
   @override
   void initState() {
@@ -55,14 +56,36 @@ class _ChatPaneState extends State<ChatPane> {
   }
 
   Future<void> _handleSendPressed() async {
-    final sent = await widget.appState.sendMessage(
-      widget.composerController.text,
-    );
-    if (!sent || !mounted) {
+    if (_isSending) {
       return;
     }
 
+    final draft = widget.composerController.text;
+    final hasPendingImage = widget.appState.pendingImageDataUrl != null;
+    if (draft.trim().isEmpty && !hasPendingImage) {
+      return;
+    }
+
+    setState(() {
+      _isSending = true;
+    });
     widget.composerController.clear();
+
+    final sent = await widget.appState.sendMessage(draft);
+    if (!mounted) {
+      return;
+    }
+
+    if (!sent && widget.composerController.text.isEmpty) {
+      widget.composerController.value = TextEditingValue(
+        text: draft,
+        selection: TextSelection.collapsed(offset: draft.length),
+      );
+    }
+
+    setState(() {
+      _isSending = false;
+    });
 
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted) {
@@ -149,7 +172,8 @@ class _ChatPaneState extends State<ChatPane> {
             focusNode: _composerFocusNode,
             sendButtonFocusNode: _sendButtonFocusNode,
             controller: widget.composerController,
-            onPickImage: appState.pickComposerImage,
+            isSending: _isSending,
+            onPickImage: _isSending ? null : appState.pickComposerImage,
             onSend: _handleSendPressed,
           ),
         ],
@@ -433,6 +457,7 @@ class _ComposerBar extends StatelessWidget {
     required this.focusNode,
     required this.sendButtonFocusNode,
     required this.controller,
+    required this.isSending,
     required this.onPickImage,
     required this.onSend,
   });
@@ -440,7 +465,8 @@ class _ComposerBar extends StatelessWidget {
   final FocusNode focusNode;
   final FocusNode sendButtonFocusNode;
   final TextEditingController controller;
-  final VoidCallback onPickImage;
+  final bool isSending;
+  final VoidCallback? onPickImage;
   final VoidCallback onSend;
 
   @override
@@ -474,16 +500,21 @@ class _ComposerBar extends StatelessWidget {
             const SizedBox(width: 8),
             FilledButton(
               focusNode: sendButtonFocusNode,
-              onPressed: onSend,
+              onPressed: isSending ? null : onSend,
               style: FilledButton.styleFrom(
                 minimumSize: const Size(92, 56),
                 backgroundColor: AppColors.pinkDeep,
               ),
-              child: const Row(
+              child: Row(
                 mainAxisSize: MainAxisSize.min,
                 children: <Widget>[
-                  Icon(Icons.send_rounded, size: 18),
-                  SizedBox(width: 6),
+                  Icon(
+                    isSending
+                        ? Icons.more_horiz_rounded
+                        : Icons.send_rounded,
+                    size: 18,
+                  ),
+                  const SizedBox(width: 6),
                   Text('전송'),
                 ],
               ),
