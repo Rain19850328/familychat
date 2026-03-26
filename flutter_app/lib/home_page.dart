@@ -42,6 +42,9 @@ class _FamilyChatHomeState extends State<FamilyChatHome> {
 
   void _handleStateChange() {
     if (mounted) {
+      if (!widget.appState.hasSession) {
+        _clearTransientState();
+      }
       setState(() {});
     }
     final toast = widget.appState.toastMessage;
@@ -50,6 +53,18 @@ class _FamilyChatHomeState extends State<FamilyChatHome> {
     }
     ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(toast)));
     widget.appState.clearToast();
+  }
+
+  void _clearTransientState() {
+    _familyNameController.clear();
+    _adminNameController.clear();
+    _inviteCodeController.clear();
+    _memberNameController.clear();
+    _composerController.clear();
+    ScaffoldMessenger.of(context).clearSnackBars();
+    if (_scaffoldKey.currentState?.isDrawerOpen ?? false) {
+      Navigator.of(context).pop();
+    }
   }
 
   @override

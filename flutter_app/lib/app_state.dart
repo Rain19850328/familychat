@@ -191,6 +191,16 @@ class FamilyChatAppState extends ChangeNotifier {
         <String, dynamic>{'p_family_id': current.familyId},
       );
       final snapshot = FamilySnapshot.fromJson(payload);
+      final stillMember = snapshot.members.any(
+        (member) => member.id == current.memberId,
+      );
+      if (!stillMember) {
+        await _invalidateCurrentSession(
+          removeCurrentProfile: true,
+          toast: '가족에서 탈퇴되어 처음 화면으로 이동했습니다. 채팅과 구성원 정보는 초기화되었습니다.',
+        );
+        return;
+      }
       final resolvedRoom = _resolveActiveRoomId(snapshot, current.activeRoomId);
       family = FamilySnapshot(
         id: snapshot.id,
@@ -214,6 +224,13 @@ class FamilyChatAppState extends ChangeNotifier {
         unawaited(markActiveRoomRead());
       }
     } catch (error) {
+      if (_shouldInvalidateSession(error)) {
+        await _invalidateCurrentSession(
+          removeCurrentProfile: true,
+          toast: '가족에서 탈퇴되어 처음 화면으로 이동했습니다. 채팅과 구성원 정보는 초기화되었습니다.',
+        );
+        return;
+      }
       if (!skipErrorToast) {
         _setToast(_friendlyError(error, fallback: '가족 정보를 불러오지 못했습니다.'));
       }
@@ -532,6 +549,30 @@ class FamilyChatAppState extends ChangeNotifier {
   }
 
   Future<void> logout() async {
+    await _invalidateCurrentSession(removeCurrentProfile: false);
+  }
+
+  Future<void> _invalidateCurrentSession({
+    required bool removeCurrentProfile,
+    String? toast,
+  }) async {
+    final current = session;
+    if (removeCurrentProfile && current != null) {
+      savedProfiles.removeWhere(
+        (profile) =>
+            profile.familyId == current.familyId &&
+            profile.memberId == current.memberId,
+      );
+    }
+    _clearRuntimeState();
+    await _persistLocalState();
+    if (toast != null && toast.isNotEmpty) {
+      toastMessage = toast;
+    }
+    notifyListeners();
+  }
+
+  void _clearRuntimeState() {
     _familyChannel?.unsubscribe();
     _familyChannel = null;
     _presenceTimer?.cancel();
@@ -540,12 +581,21 @@ class FamilyChatAppState extends ChangeNotifier {
     _refreshTimer = null;
     _refreshDebounceTimer?.cancel();
     _refreshDebounceTimer = null;
+    _queuedSends.clear();
+    _isDrainingSendQueue = false;
+    _isRefreshingFamily = false;
+    _refreshRequestedAfterCurrent = false;
+    _isMarkingRoomRead = false;
+    _markRoomReadRequested = false;
     family = null;
     session = null;
+    isBusy = false;
+    errorMessage = null;
     pendingImageDataUrl = null;
     pendingImageName = null;
-    await _persistLocalState();
-    notifyListeners();
+    profileDraftName = null;
+    profileDraftAvatarKey = null;
+    profileDraftAvatarImageDataUrl = null;
   }
 
   void setComposerActive(bool _) {
@@ -645,11 +695,13 @@ class FamilyChatAppState extends ChangeNotifier {
   }
 
   bool _applyRealtimePayload(PostgresChangePayload payload) {
-    if (family == null) {
+    if (family == null && payload.table != 'members') {
       return false;
     }
 
     switch (payload.table) {
+      case 'members':
+        return _applyRealtimeMemberPayload(payload);
       case 'messages':
         return _applyRealtimeMessagePayload(payload);
       case 'message_reads':
@@ -657,6 +709,30 @@ class FamilyChatAppState extends ChangeNotifier {
       default:
         return false;
     }
+  }
+
+  bool _applyRealtimeMemberPayload(PostgresChangePayload payload) {
+    if (payload.eventType != PostgresChangeEvent.delete) {
+      return false;
+    }
+
+    final current = session;
+    if (current == null) {
+      return false;
+    }
+
+    final memberId = payload.oldRecord['id']?.toString();
+    if (memberId != current.memberId) {
+      return false;
+    }
+
+    unawaited(
+      _invalidateCurrentSession(
+        removeCurrentProfile: true,
+        toast: '가족에서 탈퇴되어 처음 화면으로 이동했습니다. 채팅과 구성원 정보는 초기화되었습니다.',
+      ),
+    );
+    return true;
   }
 
   bool _applyRealtimeMessagePayload(PostgresChangePayload payload) {
@@ -945,6 +1021,14 @@ class FamilyChatAppState extends ChangeNotifier {
         text.contains('temporarily unavailable') ||
         text.contains('connection closed') ||
         text.contains('network');
+  }
+
+  bool _shouldInvalidateSession(Object error) {
+    final text = error.toString().toLowerCase();
+    return text.contains('member not found') ||
+        text.contains('member is not in room') ||
+        text.contains('not allowed in this room') ||
+        text.contains('탈퇴');
   }
 
   MessageRecord? _messageFromRealtimeRecord(
