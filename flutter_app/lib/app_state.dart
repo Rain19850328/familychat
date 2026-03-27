@@ -424,15 +424,32 @@ class FamilyChatAppState extends ChangeNotifier {
       return;
     }
 
+    final muted = room.mutedBy[member.id] == true;
+    BrowserPushSetupResult? pushSetup;
+    var updated = false;
+    if (muted) {
+      pushSetup = await _syncPushSubscription(force: true);
+    }
+
     await _runBusy(() async {
-      final muted = room.mutedBy[member.id] == true;
       await _rpcVoid('app_set_room_mute', <String, dynamic>{
         'p_room_id': room.id,
         'p_member_id': member.id,
         'p_muted': !muted,
       });
       await refreshFamily();
+      updated = true;
     });
+
+    if (!updated) {
+      return;
+    }
+
+    if (muted) {
+      _setToast(_pushSetupToast(pushSetup));
+    } else {
+      _setToast('이 채팅방 알림을 껐습니다.');
+    }
   }
 
   Future<void> startProfileEdit() async {
@@ -936,30 +953,53 @@ class FamilyChatAppState extends ChangeNotifier {
         .toList();
   }
 
-  Future<void> _syncPushSubscription() async {
-    if (!browserPushSupported || _isSyncingPushSubscription) {
-      return;
+  Future<BrowserPushSetupResult> _syncPushSubscription({
+    bool force = false,
+  }) async {
+    if (!browserPushSupported) {
+      return const BrowserPushSetupResult(
+        status: BrowserPushSetupStatus.unsupported,
+      );
+    }
+    if (_isSyncingPushSubscription) {
+      return const BrowserPushSetupResult(
+        status: BrowserPushSetupStatus.unavailable,
+        detail: 'sync_in_progress',
+      );
     }
 
     final current = session;
     final member = currentMember;
     if (current == null || member == null) {
-      return;
+      return const BrowserPushSetupResult(
+        status: BrowserPushSetupStatus.unavailable,
+        detail: 'missing_session',
+      );
     }
-    if (_registeredPushMemberId == member.id &&
+    if (!force &&
+        _registeredPushMemberId == member.id &&
         _registeredPushEndpoint != null &&
         _registeredPushEndpoint!.isNotEmpty) {
-      return;
+      return BrowserPushSetupResult(
+        status: BrowserPushSetupStatus.subscribed,
+        subscription: BrowserPushSubscription(
+          endpoint: _registeredPushEndpoint!,
+          p256dh: '',
+          auth: '',
+          userAgent: '',
+        ),
+      );
     }
 
     _isSyncingPushSubscription = true;
     try {
-      final subscription = await ensureBrowserPushSubscription(
+      final result = await ensureBrowserPushSubscription(
         pushConfigUrl: '$kSupabaseUrl/functions/v1/push-notifications',
         serviceWorkerPath: 'push_service_worker.js',
       );
+      final subscription = result.subscription;
       if (subscription == null) {
-        return;
+        return result;
       }
 
       await _rpcMap('app_upsert_push_subscription', <String, dynamic>{
@@ -971,10 +1011,32 @@ class FamilyChatAppState extends ChangeNotifier {
       });
       _registeredPushEndpoint = subscription.endpoint;
       _registeredPushMemberId = member.id;
+      return BrowserPushSetupResult(
+        status: BrowserPushSetupStatus.subscribed,
+        subscription: subscription,
+      );
     } catch (_) {
       // Keep chat usable even if browser push registration fails.
+      return const BrowserPushSetupResult(
+        status: BrowserPushSetupStatus.unavailable,
+        detail: 'registration_failed',
+      );
     } finally {
       _isSyncingPushSubscription = false;
+    }
+  }
+
+  String _pushSetupToast(BrowserPushSetupResult? result) {
+    switch (result?.status) {
+      case BrowserPushSetupStatus.subscribed:
+        return '이 채팅방 알림을 켰습니다.';
+      case BrowserPushSetupStatus.permissionDenied:
+        return '이 채팅방 알림은 켰지만 브라우저 알림 권한이 허용되지 않았습니다.';
+      case BrowserPushSetupStatus.unsupported:
+        return '이 채팅방 알림은 켰지만 현재 환경은 웹 푸시를 지원하지 않습니다.';
+      case BrowserPushSetupStatus.unavailable:
+      case null:
+        return '이 채팅방 알림은 켰지만 브라우저 푸시 등록은 완료되지 않았습니다.';
     }
   }
 

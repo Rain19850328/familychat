@@ -9,66 +9,90 @@ import 'web_push_types.dart';
 
 const bool browserPushSupported = true;
 
-Future<BrowserPushSubscription?> ensureBrowserPushSubscription({
+Future<BrowserPushSetupResult> ensureBrowserPushSubscription({
   required String pushConfigUrl,
   required String serviceWorkerPath,
 }) async {
   final container = html.window.navigator.serviceWorker;
   if (container == null || !html.Notification.supported) {
-    return null;
+    return const BrowserPushSetupResult(
+      status: BrowserPushSetupStatus.unsupported,
+    );
   }
 
   final permission = await html.Notification.requestPermission();
   if (permission != 'granted') {
-    return null;
-  }
-
-  final registration = await container.register(serviceWorkerPath);
-  final pushManager = registration.pushManager;
-  if (pushManager == null) {
-    return null;
-  }
-
-  html.PushSubscription? subscription;
-  try {
-    subscription = await pushManager.getSubscription();
-  } catch (_) {
-    subscription = null;
-  }
-
-  if (subscription == null) {
-    final configRequest = await html.HttpRequest.request(
-      pushConfigUrl,
-      method: 'GET',
-      requestHeaders: <String, String>{
-        'Accept': 'application/json',
-      },
+    return BrowserPushSetupResult(
+      status: BrowserPushSetupStatus.permissionDenied,
+      detail: permission,
     );
-    final config = jsonDecode(configRequest.responseText ?? '{}') as Map;
-    final publicKey = config['publicKey']?.toString() ?? '';
-    if (publicKey.isEmpty) {
-      return null;
+  }
+
+  try {
+    final registration = await container.register(serviceWorkerPath);
+    final pushManager = registration.pushManager;
+    if (pushManager == null) {
+      return const BrowserPushSetupResult(
+        status: BrowserPushSetupStatus.unavailable,
+        detail: 'missing_push_manager',
+      );
     }
 
-    subscription = await pushManager.subscribe(<String, Object>{
-      'userVisibleOnly': true,
-      'applicationServerKey': _urlBase64ToUint8List(publicKey),
-    });
-  }
+    html.PushSubscription? subscription;
+    try {
+      subscription = await pushManager.getSubscription();
+    } catch (_) {
+      subscription = null;
+    }
 
-  final endpoint = subscription.endpoint ?? '';
-  final p256dh = _encodeSubscriptionKey(subscription.getKey('p256dh'));
-  final auth = _encodeSubscriptionKey(subscription.getKey('auth'));
-  if (endpoint.isEmpty || p256dh.isEmpty || auth.isEmpty) {
-    return null;
-  }
+    if (subscription == null) {
+      final configRequest = await html.HttpRequest.request(
+        pushConfigUrl,
+        method: 'GET',
+        requestHeaders: <String, String>{
+          'Accept': 'application/json',
+        },
+      );
+      final config = jsonDecode(configRequest.responseText ?? '{}') as Map;
+      final publicKey = config['publicKey']?.toString() ?? '';
+      if (publicKey.isEmpty) {
+        return const BrowserPushSetupResult(
+          status: BrowserPushSetupStatus.unavailable,
+          detail: 'missing_public_key',
+        );
+      }
 
-  return BrowserPushSubscription(
-    endpoint: endpoint,
-    p256dh: p256dh,
-    auth: auth,
-    userAgent: html.window.navigator.userAgent,
-  );
+      subscription = await pushManager.subscribe(<String, Object>{
+        'userVisibleOnly': true,
+        'applicationServerKey': _urlBase64ToUint8List(publicKey),
+      });
+    }
+
+    final endpoint = subscription.endpoint ?? '';
+    final p256dh = _encodeSubscriptionKey(subscription.getKey('p256dh'));
+    final auth = _encodeSubscriptionKey(subscription.getKey('auth'));
+    if (endpoint.isEmpty || p256dh.isEmpty || auth.isEmpty) {
+      return const BrowserPushSetupResult(
+        status: BrowserPushSetupStatus.unavailable,
+        detail: 'invalid_subscription',
+      );
+    }
+
+    return BrowserPushSetupResult(
+      status: BrowserPushSetupStatus.subscribed,
+      subscription: BrowserPushSubscription(
+        endpoint: endpoint,
+        p256dh: p256dh,
+        auth: auth,
+        userAgent: html.window.navigator.userAgent,
+      ),
+    );
+  } catch (error) {
+    return BrowserPushSetupResult(
+      status: BrowserPushSetupStatus.unavailable,
+      detail: error.toString(),
+    );
+  }
 }
 
 Future<String?> removeBrowserPushSubscription({

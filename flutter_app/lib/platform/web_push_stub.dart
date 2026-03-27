@@ -2,11 +2,13 @@ import 'web_push_types.dart';
 
 const bool browserPushSupported = false;
 
-Future<BrowserPushSubscription?> ensureBrowserPushSubscription({
+Future<BrowserPushSetupResult> ensureBrowserPushSubscription({
   required String pushConfigUrl,
   required String serviceWorkerPath,
 }) async {
-  return null;
+  return const BrowserPushSetupResult(
+    status: BrowserPushSetupStatus.unsupported,
+  );
 }
 
 Future<String?> removeBrowserPushSubscription({

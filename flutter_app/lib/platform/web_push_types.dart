@@ -12,6 +12,27 @@ class BrowserPushSubscription {
   final String userAgent;
 }
 
+enum BrowserPushSetupStatus {
+  subscribed,
+  unsupported,
+  permissionDenied,
+  unavailable,
+}
+
+class BrowserPushSetupResult {
+  const BrowserPushSetupResult({
+    required this.status,
+    this.subscription,
+    this.detail,
+  });
+
+  final BrowserPushSetupStatus status;
+  final BrowserPushSubscription? subscription;
+  final String? detail;
+
+  bool get isSubscribed => subscription != null;
+}
+
 class PushNavigationIntent {
   const PushNavigationIntent({
     required this.familyId,
