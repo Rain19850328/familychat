@@ -9,6 +9,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 
 import 'models.dart';
 import 'platform/web_push.dart';
+import 'voice_message_support.dart';
 
 const String kSupabaseUrl = String.fromEnvironment(
   'SUPABASE_URL',
@@ -368,6 +369,8 @@ class FamilyChatAppState extends ChangeNotifier {
       type: image != null ? 'image' : 'text',
       text: text,
       imageDataUrl: image,
+      audioDataUrl: null,
+      audioDurationMs: null,
       createdAt: DateTime.now(),
       readBy: <String, String>{member.id: DateTime.now().toIso8601String()},
     );
@@ -410,6 +413,8 @@ class FamilyChatAppState extends ChangeNotifier {
         messageType: image != null ? 'image' : 'text',
         text: text,
         imageDataUrl: image,
+        audioDataUrl: null,
+        audioDurationMs: null,
         imageName: imageName,
         optimisticMessage: optimisticMessage,
         initiatedAt: sendPressedAt,
@@ -421,6 +426,91 @@ class FamilyChatAppState extends ChangeNotifier {
       messageId: optimisticMessage.id,
       roomId: room.id,
       details: <String, Object?>{'queueDepth': _queuedSends.length},
+    );
+    _startSendQueue();
+    return true;
+  }
+
+  Future<bool> sendVoiceMessage(
+    Uint8List wavBytes, {
+    required int durationMs,
+    DateTime? initiatedAt,
+  }) async {
+    final snapshot = family;
+    final member = currentMember;
+    final room = activeRoom;
+    if (snapshot == null || member == null || room == null) {
+      return false;
+    }
+    if (wavBytes.isEmpty) {
+      _setToast('음성 메시지를 녹음하지 못했습니다.');
+      return false;
+    }
+
+    final sendPressedAt = initiatedAt ?? DateTime.now();
+    _logChatTrace(
+      'send_voice_button_pressed',
+      roomId: room.id,
+      details: <String, Object?>{'durationMs': durationMs},
+    );
+    final audioDataUrl = encodeAudioDataUrl(wavBytes);
+    final optimisticMessageId =
+        'local-${DateTime.now().microsecondsSinceEpoch}';
+    final optimisticMessage = MessageRecord(
+      id: optimisticMessageId,
+      roomId: room.id,
+      familyId: snapshot.id,
+      senderId: member.id,
+      type: 'audio',
+      text: '',
+      imageDataUrl: null,
+      audioDataUrl: audioDataUrl,
+      audioDurationMs: durationMs,
+      createdAt: DateTime.now(),
+      readBy: <String, String>{member.id: DateTime.now().toIso8601String()},
+    );
+    final optimisticAppendedAt = DateTime.now();
+
+    _appendOptimisticMessage(optimisticMessage);
+    _logChatTrace(
+      'send_voice_optimistic_appended',
+      messageId: optimisticMessage.id,
+      roomId: room.id,
+      details: <String, Object?>{
+        'durationMs': durationMs,
+        'elapsedSinceClickMs': optimisticAppendedAt
+            .difference(sendPressedAt)
+            .inMilliseconds,
+      },
+    );
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _logChatTrace(
+        'send_voice_optimistic_frame_committed',
+        messageId: optimisticMessage.id,
+        roomId: room.id,
+        details: <String, Object?>{
+          'elapsedSinceClickMs': DateTime.now()
+              .difference(sendPressedAt)
+              .inMilliseconds,
+        },
+      );
+    });
+
+    _queuedSends.add(
+      _QueuedSend(
+        familyId: snapshot.id,
+        roomId: room.id,
+        senderId: member.id,
+        messageType: 'audio',
+        text: '',
+        imageDataUrl: null,
+        audioDataUrl: audioDataUrl,
+        audioDurationMs: durationMs,
+        imageName: null,
+        optimisticMessage: optimisticMessage,
+        initiatedAt: sendPressedAt,
+        optimisticAppendedAt: optimisticAppendedAt,
+      ),
     );
     _startSendQueue();
     return true;
@@ -1318,6 +1408,8 @@ class FamilyChatAppState extends ChangeNotifier {
           'p_message_type': queued.messageType,
           'p_text': queued.text,
           'p_image_data_url': queued.imageDataUrl ?? '',
+          'p_audio_data_url': queued.audioDataUrl ?? '',
+          'p_audio_duration_ms': queued.audioDurationMs,
           'p_client_message_id': queued.optimisticMessage.id,
         });
         _logChatTrace(
@@ -1451,6 +1543,8 @@ class FamilyChatAppState extends ChangeNotifier {
       type: record['type']?.toString() ?? 'text',
       text: record['text']?.toString() ?? '',
       imageDataUrl: record['image_data_url']?.toString(),
+      audioDataUrl: record['audio_data_url']?.toString(),
+      audioDurationMs: (record['audio_duration_ms'] as num?)?.toInt(),
       createdAt: createdAt,
       readBy: initialReadBy,
     );
@@ -1474,6 +1568,8 @@ class FamilyChatAppState extends ChangeNotifier {
         type: message.type,
         text: message.text,
         imageDataUrl: message.imageDataUrl,
+        audioDataUrl: message.audioDataUrl,
+        audioDurationMs: message.audioDurationMs,
         createdAt: message.createdAt,
         readBy: <String, String>{...message.readBy, ...existing.readBy},
       );
@@ -1513,6 +1609,8 @@ class FamilyChatAppState extends ChangeNotifier {
         type: message.type,
         text: message.text,
         imageDataUrl: message.imageDataUrl,
+        audioDataUrl: message.audioDataUrl,
+        audioDurationMs: message.audioDurationMs,
         createdAt: message.createdAt,
         readBy: <String, String>{...message.readBy, memberId: readAt},
       );
@@ -1549,6 +1647,8 @@ class FamilyChatAppState extends ChangeNotifier {
         type: message.type,
         text: message.text,
         imageDataUrl: message.imageDataUrl,
+        audioDataUrl: message.audioDataUrl,
+        audioDurationMs: message.audioDurationMs,
         createdAt: message.createdAt,
         readBy: <String, String>{...message.readBy, memberId: readAt},
       );
@@ -1697,6 +1797,8 @@ class FamilyChatAppState extends ChangeNotifier {
         left.type == right.type &&
         left.text == right.text &&
         left.imageDataUrl == right.imageDataUrl &&
+        left.audioDataUrl == right.audioDataUrl &&
+        left.audioDurationMs == right.audioDurationMs &&
         left.createdAt == right.createdAt &&
         mapEquals(left.readBy, right.readBy);
   }
@@ -1758,6 +1860,8 @@ class _QueuedSend {
     required this.messageType,
     required this.text,
     required this.imageDataUrl,
+    required this.audioDataUrl,
+    required this.audioDurationMs,
     required this.imageName,
     required this.optimisticMessage,
     required this.initiatedAt,
@@ -1770,6 +1874,8 @@ class _QueuedSend {
   final String messageType;
   final String text;
   final String? imageDataUrl;
+  final String? audioDataUrl;
+  final int? audioDurationMs;
   final String? imageName;
   final MessageRecord optimisticMessage;
   final DateTime initiatedAt;

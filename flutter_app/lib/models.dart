@@ -90,16 +90,12 @@ class DeviceProfile {
 }
 
 class FamilySettings {
-  const FamilySettings({
-    required this.allowGroupRooms,
-  });
+  const FamilySettings({required this.allowGroupRooms});
 
   final bool allowGroupRooms;
 
   factory FamilySettings.fromJson(Map<dynamic, dynamic>? json) {
-    return FamilySettings(
-      allowGroupRooms: json?['allowGroupRooms'] == true,
-    );
+    return FamilySettings(allowGroupRooms: json?['allowGroupRooms'] == true);
   }
 }
 
@@ -128,23 +124,45 @@ class FamilySnapshot {
     return FamilySnapshot(
       id: json['id'] as String,
       name: json['name'] as String? ?? '가족',
-      createdAt: DateTime.tryParse(json['createdAt'] as String? ?? '') ?? DateTime.now(),
-      members: ((json['members'] as List<dynamic>? ?? const <dynamic>[])
-              .map((item) => MemberRecord.fromJson(Map<String, dynamic>.from(item as Map)))
-              .toList())
-          .cast<MemberRecord>(),
-      rooms: ((json['rooms'] as List<dynamic>? ?? const <dynamic>[])
-              .map((item) => RoomRecord.fromJson(Map<String, dynamic>.from(item as Map)))
-              .toList())
-          .cast<RoomRecord>(),
-      invites: ((json['invites'] as List<dynamic>? ?? const <dynamic>[])
-              .map((item) => InviteRecord.fromJson(Map<String, dynamic>.from(item as Map)))
-              .toList())
-          .cast<InviteRecord>(),
-      messages: ((json['messages'] as List<dynamic>? ?? const <dynamic>[])
-              .map((item) => MessageRecord.fromJson(Map<String, dynamic>.from(item as Map)))
-              .toList())
-          .cast<MessageRecord>(),
+      createdAt:
+          DateTime.tryParse(json['createdAt'] as String? ?? '') ??
+          DateTime.now(),
+      members:
+          ((json['members'] as List<dynamic>? ?? const <dynamic>[])
+                  .map(
+                    (item) => MemberRecord.fromJson(
+                      Map<String, dynamic>.from(item as Map),
+                    ),
+                  )
+                  .toList())
+              .cast<MemberRecord>(),
+      rooms:
+          ((json['rooms'] as List<dynamic>? ?? const <dynamic>[])
+                  .map(
+                    (item) => RoomRecord.fromJson(
+                      Map<String, dynamic>.from(item as Map),
+                    ),
+                  )
+                  .toList())
+              .cast<RoomRecord>(),
+      invites:
+          ((json['invites'] as List<dynamic>? ?? const <dynamic>[])
+                  .map(
+                    (item) => InviteRecord.fromJson(
+                      Map<String, dynamic>.from(item as Map),
+                    ),
+                  )
+                  .toList())
+              .cast<InviteRecord>(),
+      messages:
+          ((json['messages'] as List<dynamic>? ?? const <dynamic>[])
+                  .map(
+                    (item) => MessageRecord.fromJson(
+                      Map<String, dynamic>.from(item as Map),
+                    ),
+                  )
+                  .toList())
+              .cast<MessageRecord>(),
       settings: FamilySettings.fromJson(json['settings'] as Map?),
     );
   }
@@ -177,7 +195,9 @@ class MemberRecord {
       familyId: json['familyId'] as String,
       name: json['name'] as String? ?? '사용자',
       role: json['role'] as String? ?? 'member',
-      createdAt: DateTime.tryParse(json['createdAt'] as String? ?? '') ?? DateTime.now(),
+      createdAt:
+          DateTime.tryParse(json['createdAt'] as String? ?? '') ??
+          DateTime.now(),
       lastSeenAt: DateTime.tryParse(json['lastSeenAt'] as String? ?? ''),
       avatarKey: json['avatarKey'] as String?,
       avatarImageDataUrl: json['avatarImageDataUrl'] as String?,
@@ -210,12 +230,15 @@ class RoomRecord {
       familyId: json['familyId'] as String,
       type: json['type'] as String? ?? 'family',
       title: json['title'] as String? ?? '',
-      createdAt: DateTime.tryParse(json['createdAt'] as String? ?? '') ?? DateTime.now(),
+      createdAt:
+          DateTime.tryParse(json['createdAt'] as String? ?? '') ??
+          DateTime.now(),
       memberIds: (json['memberIds'] as List<dynamic>? ?? const <dynamic>[])
           .map((item) => item.toString())
           .toList(),
-      mutedBy: ((json['mutedBy'] as Map?) ?? const {})
-          .map((key, value) => MapEntry(key.toString(), value == true)),
+      mutedBy: ((json['mutedBy'] as Map?) ?? const {}).map(
+        (key, value) => MapEntry(key.toString(), value == true),
+      ),
     );
   }
 }
@@ -250,7 +273,9 @@ class InviteRecord {
       status: json['status'] as String? ?? 'active',
       usedBy: json['usedBy'] as String?,
       usedAt: DateTime.tryParse(json['usedAt'] as String? ?? ''),
-      createdAt: DateTime.tryParse(json['createdAt'] as String? ?? '') ?? DateTime.now(),
+      createdAt:
+          DateTime.tryParse(json['createdAt'] as String? ?? '') ??
+          DateTime.now(),
     );
   }
 }
@@ -264,6 +289,8 @@ class MessageRecord {
     required this.type,
     required this.text,
     this.imageDataUrl,
+    this.audioDataUrl,
+    this.audioDurationMs,
     required this.createdAt,
     required this.readBy,
   });
@@ -275,6 +302,8 @@ class MessageRecord {
   final String type;
   final String text;
   final String? imageDataUrl;
+  final String? audioDataUrl;
+  final int? audioDurationMs;
   final DateTime createdAt;
   final Map<String, String> readBy;
 
@@ -287,9 +316,14 @@ class MessageRecord {
       type: json['type'] as String? ?? 'text',
       text: json['text'] as String? ?? '',
       imageDataUrl: json['imageDataUrl'] as String?,
-      createdAt: DateTime.tryParse(json['createdAt'] as String? ?? '') ?? DateTime.now(),
-      readBy: ((json['readBy'] as Map?) ?? const {})
-          .map((key, value) => MapEntry(key.toString(), value.toString())),
+      audioDataUrl: json['audioDataUrl'] as String?,
+      audioDurationMs: (json['audioDurationMs'] as num?)?.toInt(),
+      createdAt:
+          DateTime.tryParse(json['createdAt'] as String? ?? '') ??
+          DateTime.now(),
+      readBy: ((json['readBy'] as Map?) ?? const {}).map(
+        (key, value) => MapEntry(key.toString(), value.toString()),
+      ),
     );
   }
 }

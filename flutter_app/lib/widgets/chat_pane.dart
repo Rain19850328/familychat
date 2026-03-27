@@ -1,10 +1,16 @@
+import 'dart:async';
+import 'dart:typed_data';
+
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
+import 'package:just_audio/just_audio.dart';
+import 'package:record/record.dart';
 
 import '../app_state.dart';
 import '../models.dart';
 import '../ui/design_tokens.dart';
+import '../voice_message_support.dart';
 import 'common.dart';
 
 const List<String> _composerFontFallback = <String>[
@@ -34,7 +40,14 @@ class ChatPane extends StatefulWidget {
 class _ChatPaneState extends State<ChatPane> {
   late final FocusNode _composerFocusNode;
   late final FocusNode _sendButtonFocusNode;
+  late final AudioRecorder _audioRecorder;
+  StreamSubscription<Uint8List>? _recordingSubscription;
+  BytesBuilder? _recordedPcmChunks;
+  Stopwatch? _recordingStopwatch;
+  Timer? _recordingTicker;
   bool _isSending = false;
+  bool _isRecording = false;
+  int _recordingDurationMs = 0;
 
   @override
   void initState() {
@@ -45,12 +58,16 @@ class _ChatPaneState extends State<ChatPane> {
       canRequestFocus: false,
       skipTraversal: true,
     );
+    _audioRecorder = AudioRecorder();
     _composerFocusNode.addListener(_syncComposerState);
     widget.composerController.addListener(_syncComposerState);
   }
 
   @override
   void dispose() {
+    _recordingTicker?.cancel();
+    unawaited(_recordingSubscription?.cancel() ?? Future<void>.value());
+    unawaited(_audioRecorder.dispose());
     widget.composerController.removeListener(_syncComposerState);
     _composerFocusNode.removeListener(_syncComposerState);
     widget.appState.setComposerActive(false);
@@ -100,6 +117,134 @@ class _ChatPaneState extends State<ChatPane> {
       _isSending = false;
     });
 
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) {
+        return;
+      }
+      _composerFocusNode.requestFocus();
+    });
+  }
+
+  Future<void> _toggleVoiceRecording() async {
+    if (_isSending) {
+      return;
+    }
+    if (_isRecording) {
+      await _finishVoiceRecording();
+      return;
+    }
+
+    final hasPermission = await _audioRecorder.hasPermission();
+    if (!hasPermission) {
+      if (!mounted) {
+        return;
+      }
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('마이크 권한을 허용해 주세요.')));
+      return;
+    }
+
+    try {
+      final stream = await _audioRecorder.startStream(
+        const RecordConfig(
+          encoder: AudioEncoder.pcm16bits,
+          sampleRate: kVoiceSampleRate,
+          numChannels: kVoiceChannels,
+        ),
+      );
+      _recordedPcmChunks = BytesBuilder(copy: false);
+      _recordingStopwatch = Stopwatch()..start();
+      _recordingSubscription = stream.listen((chunk) {
+        _recordedPcmChunks?.add(chunk);
+      });
+      _recordingTicker?.cancel();
+      _recordingTicker = Timer.periodic(const Duration(milliseconds: 200), (_) {
+        if (!mounted || _recordingStopwatch == null) {
+          return;
+        }
+        final elapsed = _recordingStopwatch!.elapsedMilliseconds;
+        if (elapsed >= kVoiceMessageMaxDurationMs) {
+          unawaited(_finishVoiceRecording());
+          return;
+        }
+        setState(() {
+          _recordingDurationMs = elapsed;
+        });
+      });
+      setState(() {
+        _isRecording = true;
+        _recordingDurationMs = 0;
+      });
+    } catch (_) {
+      if (!mounted) {
+        return;
+      }
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('음성 녹음을 시작하지 못했습니다.')));
+    }
+  }
+
+  Future<void> _finishVoiceRecording() async {
+    if (!_isRecording) {
+      return;
+    }
+
+    final pressedAt = DateTime.now();
+    final stopwatch = _recordingStopwatch;
+    final elapsedMs = stopwatch?.elapsedMilliseconds ?? _recordingDurationMs;
+    stopwatch?.stop();
+    _recordingTicker?.cancel();
+    _recordingTicker = null;
+    await _recordingSubscription?.cancel();
+    _recordingSubscription = null;
+    await _audioRecorder.stop();
+    final pcmBytes = _recordedPcmChunks?.toBytes() ?? Uint8List(0);
+    _recordedPcmChunks = null;
+
+    setState(() {
+      _isRecording = false;
+      _recordingDurationMs = 0;
+      _isSending = true;
+    });
+
+    final estimatedDurationMs = estimatePcm16DurationMs(pcmBytes);
+    final durationMs = estimatedDurationMs > 0
+        ? estimatedDurationMs
+        : elapsedMs;
+
+    if (pcmBytes.isEmpty || durationMs < 300) {
+      if (mounted) {
+        setState(() {
+          _isSending = false;
+        });
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('너무 짧아서 음성 메시지를 보내지 않았습니다.')),
+        );
+      }
+      return;
+    }
+
+    final wavBytes = encodePcm16Wav(pcmBytes);
+    final sent = await widget.appState.sendVoiceMessage(
+      wavBytes,
+      durationMs: durationMs,
+      initiatedAt: pressedAt,
+    );
+    if (!mounted) {
+      return;
+    }
+
+    setState(() {
+      _isSending = false;
+    });
+
+    if (!sent) {
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('음성 메시지를 보내지 못했습니다.')));
+    }
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted) {
         return;
@@ -183,7 +328,10 @@ class _ChatPaneState extends State<ChatPane> {
           sendButtonFocusNode: _sendButtonFocusNode,
           controller: widget.composerController,
           isSending: _isSending,
+          isRecording: _isRecording,
+          recordingDurationMs: _recordingDurationMs,
           onPickImage: _isSending ? null : appState.pickComposerImage,
+          onToggleRecording: _toggleVoiceRecording,
           onSend: _handleSendPressed,
         ),
       ],
@@ -294,6 +442,14 @@ class _MessageBubble extends StatelessWidget {
                         message.imageDataUrl!,
                         fit: BoxFit.cover,
                       ),
+                    ),
+                    if (message.text.isNotEmpty) const SizedBox(height: 10),
+                  ],
+                  if (message.audioDataUrl != null) ...<Widget>[
+                    _AudioMessageTile(
+                      audioDataUrl: message.audioDataUrl!,
+                      durationMs: message.audioDurationMs,
+                      accent: accent,
                     ),
                     if (message.text.isNotEmpty) const SizedBox(height: 10),
                   ],
@@ -458,7 +614,10 @@ class _ComposerBar extends StatelessWidget {
     required this.sendButtonFocusNode,
     required this.controller,
     required this.isSending,
+    required this.isRecording,
+    required this.recordingDurationMs,
     required this.onPickImage,
+    required this.onToggleRecording,
     required this.onSend,
   });
 
@@ -466,7 +625,10 @@ class _ComposerBar extends StatelessWidget {
   final FocusNode sendButtonFocusNode;
   final TextEditingController controller;
   final bool isSending;
+  final bool isRecording;
+  final int recordingDurationMs;
   final VoidCallback? onPickImage;
+  final VoidCallback onToggleRecording;
   final VoidCallback onSend;
 
   @override
@@ -486,8 +648,20 @@ class _ComposerBar extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.end,
         children: <Widget>[
           IconButton.filledTonal(
-            onPressed: onPickImage,
+            onPressed: isRecording ? null : onPickImage,
             icon: const Icon(Icons.add_photo_alternate_rounded),
+          ),
+          const SizedBox(width: 8),
+          IconButton.filledTonal(
+            onPressed: isSending ? null : onToggleRecording,
+            style: IconButton.styleFrom(
+              backgroundColor: isRecording
+                  ? AppColors.pinkDeep
+                  : AppColors.lavender,
+              foregroundColor: isRecording ? Colors.white : AppColors.plum,
+            ),
+            icon: Icon(isRecording ? Icons.stop_rounded : Icons.mic_rounded),
+            tooltip: isRecording ? 'Stop recording' : 'Record voice message',
           ),
           const SizedBox(width: 8),
           Expanded(
@@ -501,6 +675,7 @@ class _ComposerBar extends StatelessWidget {
                 focusNode: focusNode,
                 controller: controller,
                 style: composerTextStyle,
+                readOnly: isRecording,
                 minLines: 1,
                 maxLines: 1,
                 decoration: InputDecoration(
@@ -518,7 +693,7 @@ class _ComposerBar extends StatelessWidget {
           const SizedBox(width: 8),
           IconButton.filled(
             focusNode: sendButtonFocusNode,
-            onPressed: isSending ? null : onSend,
+            onPressed: isSending || isRecording ? null : onSend,
             style: IconButton.styleFrom(
               minimumSize: const Size(56, 56),
               backgroundColor: AppColors.pinkDeep,
@@ -536,6 +711,193 @@ class _ComposerBar extends StatelessWidget {
   }
 }
 
+class _AudioMessageTile extends StatefulWidget {
+  const _AudioMessageTile({
+    required this.audioDataUrl,
+    required this.accent,
+    this.durationMs,
+  });
+
+  final String audioDataUrl;
+  final int? durationMs;
+  final Color accent;
+
+  @override
+  State<_AudioMessageTile> createState() => _AudioMessageTileState();
+}
+
+class _AudioMessageTileState extends State<_AudioMessageTile> {
+  late final AudioPlayer _player;
+  Duration? _duration;
+  String? _loadError;
+
+  @override
+  void initState() {
+    super.initState();
+    _player = AudioPlayer();
+    _player.durationStream.listen((duration) {
+      if (!mounted) {
+        return;
+      }
+      setState(() {
+        _duration = duration;
+      });
+    });
+    unawaited(_loadSource());
+  }
+
+  @override
+  void didUpdateWidget(covariant _AudioMessageTile oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.audioDataUrl != widget.audioDataUrl) {
+      unawaited(_loadSource());
+    }
+  }
+
+  Future<void> _loadSource() async {
+    final bytes = decodeAudioDataUrl(widget.audioDataUrl);
+    if (bytes == null || bytes.isEmpty) {
+      if (!mounted) {
+        return;
+      }
+      setState(() {
+        _loadError = 'Audio unavailable';
+        _duration = null;
+      });
+      return;
+    }
+
+    try {
+      await _player.setAudioSource(MemoryAudioSource(bytes));
+      if (!mounted) {
+        return;
+      }
+      setState(() {
+        _loadError = null;
+      });
+    } catch (_) {
+      if (!mounted) {
+        return;
+      }
+      setState(() {
+        _loadError = 'Audio unavailable';
+      });
+    }
+  }
+
+  @override
+  void dispose() {
+    unawaited(_player.dispose());
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final fallbackDuration = widget.durationMs == null
+        ? Duration.zero
+        : Duration(milliseconds: widget.durationMs!);
+    return DecoratedBox(
+      decoration: BoxDecoration(
+        color: widget.accent.withValues(alpha: 0.10),
+        borderRadius: BorderRadius.circular(24),
+      ),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+        child: StreamBuilder<PlayerState>(
+          stream: _player.playerStateStream,
+          builder: (context, stateSnapshot) {
+            final isPlaying = stateSnapshot.data?.playing ?? false;
+            return Row(
+              children: <Widget>[
+                IconButton.filledTonal(
+                  onPressed: _loadError != null
+                      ? null
+                      : () async {
+                          if (isPlaying) {
+                            await _player.pause();
+                            return;
+                          }
+                          final duration = _player.duration ?? Duration.zero;
+                          if (_player.position >= duration &&
+                              duration > Duration.zero) {
+                            await _player.seek(Duration.zero);
+                          }
+                          await _player.play();
+                        },
+                  style: IconButton.styleFrom(
+                    backgroundColor: widget.accent.withValues(alpha: 0.16),
+                    foregroundColor: widget.accent,
+                  ),
+                  icon: Icon(
+                    isPlaying ? Icons.pause_rounded : Icons.play_arrow_rounded,
+                  ),
+                ),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: <Widget>[
+                      Text(
+                        _loadError ?? 'Voice message',
+                        style: Theme.of(
+                          context,
+                        ).textTheme.labelLarge?.copyWith(color: AppColors.ink),
+                      ),
+                      const SizedBox(height: 8),
+                      StreamBuilder<Duration>(
+                        stream: _player.positionStream,
+                        builder: (context, positionSnapshot) {
+                          final position =
+                              positionSnapshot.data ?? Duration.zero;
+                          final duration = _duration ?? fallbackDuration;
+                          final denominator = duration.inMilliseconds <= 0
+                              ? 1
+                              : duration.inMilliseconds;
+                          final progress =
+                              (position.inMilliseconds / denominator)
+                                  .clamp(0, 1)
+                                  .toDouble();
+                          return Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: <Widget>[
+                              ClipRRect(
+                                borderRadius: BorderRadius.circular(999),
+                                child: LinearProgressIndicator(
+                                  value: progress,
+                                  minHeight: 8,
+                                  backgroundColor: widget.accent.withValues(
+                                    alpha: 0.14,
+                                  ),
+                                  valueColor: AlwaysStoppedAnimation<Color>(
+                                    widget.accent,
+                                  ),
+                                ),
+                              ),
+                              const SizedBox(height: 6),
+                              Text(
+                                '${_formatDuration(position.inMilliseconds)} / ${_formatDuration(duration.inMilliseconds)}',
+                                style: Theme.of(context).textTheme.bodyMedium
+                                    ?.copyWith(
+                                      fontSize: 12,
+                                      color: AppColors.inkSoft,
+                                    ),
+                              ),
+                            ],
+                          );
+                        },
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            );
+          },
+        ),
+      ),
+    );
+  }
+}
+
 String? _readStatusLabel(MessageRecord message, String currentMemberId) {
   if (message.senderId == null || message.senderId != currentMemberId) {
     return null;
@@ -548,6 +910,13 @@ String? _readStatusLabel(MessageRecord message, String currentMemberId) {
     return '안읽음';
   }
   return readCount == 1 ? '읽음' : '읽음 $readCount';
+}
+
+String _formatDuration(int durationMs) {
+  final duration = Duration(milliseconds: durationMs);
+  final minutes = duration.inMinutes.remainder(60).toString().padLeft(2, '0');
+  final seconds = duration.inSeconds.remainder(60).toString().padLeft(2, '0');
+  return '$minutes:$seconds';
 }
 
 TextStyle _composerTextStyle(

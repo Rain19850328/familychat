@@ -1,7 +1,7 @@
 name: familychat_flutter
 description: "Closed family chat rebuilt with Flutter Web."
 publish_to: 'none'
-version: 1.0.22+23
+version: 1.1.0+24
 
 environment:
   sdk: ^3.11.3
@@ -12,6 +12,8 @@ dependencies:
   cupertino_icons: ^1.0.8
   file_picker: ^10.3.3
   intl: ^0.20.2
+  just_audio: ^0.10.5
+  record: ^6.2.0
   shared_preferences: ^2.5.3
   supabase_flutter: ^2.10.3
 
