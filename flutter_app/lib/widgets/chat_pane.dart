@@ -69,6 +69,7 @@ class _ChatPaneState extends State<ChatPane> {
       return;
     }
 
+    final pressedAt = DateTime.now();
     final draft = widget.composerController.text;
     final hasPendingImage = widget.appState.pendingImageDataUrl != null;
     if (draft.trim().isEmpty && !hasPendingImage) {
@@ -80,7 +81,10 @@ class _ChatPaneState extends State<ChatPane> {
     });
     widget.composerController.clear();
 
-    final sent = await widget.appState.sendMessage(draft);
+    final sent = await widget.appState.sendMessage(
+      draft,
+      initiatedAt: pressedAt,
+    );
     if (!mounted) {
       return;
     }

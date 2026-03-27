@@ -3,6 +3,7 @@ import 'dart:convert';
 
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/foundation.dart';
+import 'package:flutter/widgets.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
@@ -63,7 +64,8 @@ class FamilyChatAppState extends ChangeNotifier {
   String? _registeredPushEndpoint;
   String? _registeredPushMemberId;
   BrowserPushSetupResult? pendingPushHelp;
-  PushNavigationIntent? _pendingPushNavigation = getPendingPushNavigationIntent();
+  PushNavigationIntent? _pendingPushNavigation =
+      getPendingPushNavigationIntent();
 
   Future<void> bootstrap() async {
     _hydrateLocalState();
@@ -185,18 +187,32 @@ class FamilyChatAppState extends ChangeNotifier {
     unawaited(_syncPushSubscription());
   }
 
-  Future<void> refreshFamily({bool skipErrorToast = false}) async {
+  Future<void> refreshFamily({
+    bool skipErrorToast = false,
+    String reason = 'manual',
+  }) async {
     final current = session;
     if (current == null) {
       return;
     }
     if (_isRefreshingFamily) {
       _refreshRequestedAfterCurrent = true;
+      _logChatTrace(
+        'family_refresh_skipped_busy',
+        roomId: current.activeRoomId,
+        details: <String, Object?>{'reason': reason},
+      );
       return;
     }
 
     _refreshDebounceTimer?.cancel();
     _isRefreshingFamily = true;
+    final stopwatch = Stopwatch()..start();
+    _logChatTrace(
+      'family_refresh_start',
+      roomId: current.activeRoomId,
+      details: <String, Object?>{'reason': reason},
+    );
     try {
       final payload = await _rpcMap(
         'app_get_family_snapshot',
@@ -248,10 +264,20 @@ class FamilyChatAppState extends ChangeNotifier {
         _setToast(_friendlyError(error, fallback: '가족 정보를 불러오지 못했습니다.'));
       }
     } finally {
+      stopwatch.stop();
+      _logChatTrace(
+        'family_refresh_end',
+        roomId: current.activeRoomId,
+        details: <String, Object?>{
+          'reason': reason,
+          'elapsedMs': stopwatch.elapsedMilliseconds,
+          'messageCount': family?.messages.length,
+        },
+      );
       _isRefreshingFamily = false;
       if (_refreshRequestedAfterCurrent) {
         _refreshRequestedAfterCurrent = false;
-        _scheduleFamilyRefresh(immediate: true);
+        _scheduleFamilyRefresh(immediate: true, reason: 'queued_after:$reason');
       }
     }
   }
@@ -306,7 +332,7 @@ class FamilyChatAppState extends ChangeNotifier {
     });
   }
 
-  Future<bool> sendMessage(String rawText) async {
+  Future<bool> sendMessage(String rawText, {DateTime? initiatedAt}) async {
     final snapshot = family;
     final member = currentMember;
     final room = activeRoom;
@@ -317,10 +343,19 @@ class FamilyChatAppState extends ChangeNotifier {
     final text = rawText.trim();
     final image = pendingImageDataUrl;
     final imageName = pendingImageName;
+    final sendPressedAt = initiatedAt ?? DateTime.now();
     if (text.isEmpty && (image == null || image.isEmpty)) {
       _setToast('메시지나 이미지를 입력해 주세요.');
       return false;
     }
+    _logChatTrace(
+      'send_button_pressed',
+      roomId: room.id,
+      details: <String, Object?>{
+        'textLength': text.length,
+        'hasImage': image != null,
+      },
+    );
 
     final optimisticMessageId =
         'local-${DateTime.now().microsecondsSinceEpoch}';
@@ -335,10 +370,36 @@ class FamilyChatAppState extends ChangeNotifier {
       createdAt: DateTime.now(),
       readBy: <String, String>{member.id: DateTime.now().toIso8601String()},
     );
+    final optimisticAppendedAt = DateTime.now();
 
     pendingImageDataUrl = null;
     pendingImageName = null;
     _appendOptimisticMessage(optimisticMessage);
+    _logChatTrace(
+      'send_optimistic_appended',
+      messageId: optimisticMessage.id,
+      roomId: room.id,
+      details: <String, Object?>{
+        'textLength': text.length,
+        'hasImage': image != null,
+        'queueDepth': _queuedSends.length + 1,
+        'elapsedSinceClickMs': optimisticAppendedAt
+            .difference(sendPressedAt)
+            .inMilliseconds,
+      },
+    );
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _logChatTrace(
+        'send_optimistic_frame_committed',
+        messageId: optimisticMessage.id,
+        roomId: room.id,
+        details: <String, Object?>{
+          'elapsedSinceClickMs': DateTime.now()
+              .difference(sendPressedAt)
+              .inMilliseconds,
+        },
+      );
+    });
 
     _queuedSends.add(
       _QueuedSend(
@@ -350,7 +411,15 @@ class FamilyChatAppState extends ChangeNotifier {
         imageDataUrl: image,
         imageName: imageName,
         optimisticMessage: optimisticMessage,
+        initiatedAt: sendPressedAt,
+        optimisticAppendedAt: optimisticAppendedAt,
       ),
+    );
+    _logChatTrace(
+      'send_enqueued',
+      messageId: optimisticMessage.id,
+      roomId: room.id,
+      details: <String, Object?>{'queueDepth': _queuedSends.length},
     );
     _startSendQueue();
     return true;
@@ -706,7 +775,10 @@ class FamilyChatAppState extends ChangeNotifier {
               ),
         callback: (payload) {
           if (!_applyRealtimePayload(payload)) {
-            _scheduleFamilyRefresh();
+            _scheduleFamilyRefresh(
+              reason:
+                  'realtime:${payload.table}:${payload.eventType.toString()}',
+            );
           }
         },
       );
@@ -727,7 +799,7 @@ class FamilyChatAppState extends ChangeNotifier {
     _refreshTimer?.cancel();
     _refreshTimer = Timer.periodic(const Duration(seconds: 30), (_) {
       if (session != null && !isBusy) {
-        _scheduleFamilyRefresh();
+        _scheduleFamilyRefresh(reason: 'periodic_timer');
       }
     });
   }
@@ -750,13 +822,30 @@ class FamilyChatAppState extends ChangeNotifier {
   }
 
   bool _applyRealtimeMemberPayload(PostgresChangePayload payload) {
-    if (payload.eventType != PostgresChangeEvent.delete) {
-      return false;
-    }
-
     final current = session;
     if (current == null) {
       return false;
+    }
+
+    if (payload.eventType != PostgresChangeEvent.delete) {
+      final member = _memberFromRealtimeRecord(
+        payload.newRecord,
+        fallbackTimestamp: payload.commitTimestamp,
+      );
+      if (member == null) {
+        return false;
+      }
+      final changed = _upsertRealtimeMember(member);
+      if (changed) {
+        _logChatTrace(
+          'realtime_member_applied',
+          details: <String, Object?>{
+            'memberId': member.id,
+            'eventType': payload.eventType.toString(),
+          },
+        );
+      }
+      return changed;
     }
 
     final memberId = payload.oldRecord['id']?.toString();
@@ -787,6 +876,17 @@ class FamilyChatAppState extends ChangeNotifier {
     }
 
     final changed = _upsertRealtimeMessage(message);
+    if (changed) {
+      _logChatTrace(
+        'realtime_message_applied',
+        messageId: message.id,
+        roomId: message.roomId,
+        details: <String, Object?>{
+          'eventType': payload.eventType.toString(),
+          'senderId': message.senderId,
+        },
+      );
+    }
     final member = currentMember;
     final room = activeRoom;
     if (changed &&
@@ -815,7 +915,15 @@ class FamilyChatAppState extends ChangeNotifier {
     final readAt =
         record['read_at']?.toString() ??
         payload.commitTimestamp.toIso8601String();
-    return _applyMessageReadLocally(messageId, memberId, readAt);
+    final changed = _applyMessageReadLocally(messageId, memberId, readAt);
+    if (changed) {
+      _logChatTrace(
+        'realtime_read_applied',
+        messageId: messageId,
+        details: <String, Object?>{'readerId': memberId},
+      );
+    }
+    return changed;
   }
 
   Future<void> _runBusy(Future<void> Function() operation) async {
@@ -1119,9 +1227,14 @@ class FamilyChatAppState extends ChangeNotifier {
       try {
         await _sendQueuedMessage(queued);
         _queuedSends.removeAt(0);
-        if (_queuedSends.isEmpty) {
-          unawaited(touchCurrentMember());
-        }
+        _logChatTrace(
+          'send_queue_item_completed',
+          messageId: queued.optimisticMessage.id,
+          roomId: queued.roomId,
+          details: <String, Object?>{
+            'remainingQueueDepth': _queuedSends.length,
+          },
+        );
       } catch (error) {
         _queuedSends.removeAt(0);
         if (queued.imageDataUrl != null &&
@@ -1131,6 +1244,15 @@ class FamilyChatAppState extends ChangeNotifier {
           pendingImageName = queued.imageName;
         }
         _removeOptimisticMessage(queued.optimisticMessage.id);
+        _logChatTrace(
+          'send_queue_item_failed',
+          messageId: queued.optimisticMessage.id,
+          roomId: queued.roomId,
+          details: <String, Object?>{
+            'error': error.toString(),
+            'remainingQueueDepth': _queuedSends.length,
+          },
+        );
         errorMessage = _friendlyError(error, fallback: '메시지를 보내지 못했습니다.');
         _setToast(errorMessage!);
       }
@@ -1142,6 +1264,20 @@ class FamilyChatAppState extends ChangeNotifier {
     Object? lastError;
     for (var attempt = 0; attempt < 3; attempt++) {
       try {
+        _logChatTrace(
+          'send_rpc_start',
+          messageId: queued.optimisticMessage.id,
+          roomId: queued.roomId,
+          details: <String, Object?>{
+            'attempt': attempt + 1,
+            'elapsedSinceClickMs': DateTime.now()
+                .difference(queued.initiatedAt)
+                .inMilliseconds,
+            'elapsedSinceOptimisticMs': DateTime.now()
+                .difference(queued.optimisticAppendedAt)
+                .inMilliseconds,
+          },
+        );
         await _rpcMap('app_send_message', <String, dynamic>{
           'p_family_id': queued.familyId,
           'p_room_id': queued.roomId,
@@ -1151,9 +1287,29 @@ class FamilyChatAppState extends ChangeNotifier {
           'p_image_data_url': queued.imageDataUrl ?? '',
           'p_client_message_id': queued.optimisticMessage.id,
         });
+        _logChatTrace(
+          'send_rpc_response',
+          messageId: queued.optimisticMessage.id,
+          roomId: queued.roomId,
+          details: <String, Object?>{
+            'attempt': attempt + 1,
+            'elapsedSinceClickMs': DateTime.now()
+                .difference(queued.initiatedAt)
+                .inMilliseconds,
+          },
+        );
         return;
       } catch (error) {
         lastError = error;
+        _logChatTrace(
+          'send_rpc_error',
+          messageId: queued.optimisticMessage.id,
+          roomId: queued.roomId,
+          details: <String, Object?>{
+            'attempt': attempt + 1,
+            'error': error.toString(),
+          },
+        );
         if (!_shouldRetryQueuedSend(error) || attempt == 2) {
           rethrow;
         }
@@ -1166,13 +1322,16 @@ class FamilyChatAppState extends ChangeNotifier {
     }
   }
 
-  void _scheduleFamilyRefresh({bool immediate = false}) {
+  void _scheduleFamilyRefresh({
+    bool immediate = false,
+    String reason = 'unspecified',
+  }) {
     if (session == null) {
       return;
     }
     if (immediate) {
       _refreshDebounceTimer?.cancel();
-      unawaited(refreshFamily(skipErrorToast: true));
+      unawaited(refreshFamily(skipErrorToast: true, reason: reason));
       return;
     }
     if (_refreshDebounceTimer?.isActive ?? false) {
@@ -1180,9 +1339,33 @@ class FamilyChatAppState extends ChangeNotifier {
     }
     _refreshDebounceTimer = Timer(const Duration(milliseconds: 350), () {
       if (session != null && !isBusy) {
-        unawaited(refreshFamily(skipErrorToast: true));
+        unawaited(refreshFamily(skipErrorToast: true, reason: reason));
       }
     });
+  }
+
+  MemberRecord? _memberFromRealtimeRecord(
+    Map<String, dynamic> record, {
+    required DateTime fallbackTimestamp,
+  }) {
+    final id = record['id']?.toString();
+    final familyId = record['family_id']?.toString();
+    if (id == null || familyId == null) {
+      return null;
+    }
+
+    return MemberRecord(
+      id: id,
+      familyId: familyId,
+      name: record['name']?.toString() ?? '',
+      role: record['role']?.toString() ?? 'member',
+      createdAt:
+          DateTime.tryParse(record['created_at']?.toString() ?? '') ??
+          fallbackTimestamp,
+      lastSeenAt: DateTime.tryParse(record['last_seen_at']?.toString() ?? ''),
+      avatarKey: record['avatar_key']?.toString(),
+      avatarImageDataUrl: record['avatar_image_data_url']?.toString(),
+    );
   }
 
   bool _shouldRetryQueuedSend(Object error) {
@@ -1250,7 +1433,7 @@ class FamilyChatAppState extends ChangeNotifier {
     final index = updatedMessages.indexWhere((item) => item.id == message.id);
     if (index >= 0) {
       final existing = updatedMessages[index];
-      updatedMessages[index] = MessageRecord(
+      final merged = MessageRecord(
         id: message.id,
         roomId: message.roomId,
         familyId: message.familyId,
@@ -1261,13 +1444,14 @@ class FamilyChatAppState extends ChangeNotifier {
         createdAt: message.createdAt,
         readBy: <String, String>{...message.readBy, ...existing.readBy},
       );
+      if (_messageEquals(existing, merged)) {
+        return false;
+      }
+      updatedMessages[index] = merged;
     } else {
-      updatedMessages.add(message);
+      final insertIndex = _findMessageInsertIndex(updatedMessages, message);
+      updatedMessages.insert(insertIndex, message);
     }
-
-    updatedMessages.sort(
-      (left, right) => left.createdAt.compareTo(right.createdAt),
-    );
     _replaceFamilyMessages(snapshot, updatedMessages);
     return true;
   }
@@ -1344,6 +1528,48 @@ class FamilyChatAppState extends ChangeNotifier {
     _replaceFamilyMessages(snapshot, updatedMessages);
   }
 
+  bool _upsertRealtimeMember(MemberRecord member) {
+    final snapshot = family;
+    if (snapshot == null) {
+      return false;
+    }
+
+    final updatedMembers = List<MemberRecord>.from(snapshot.members);
+    final index = updatedMembers.indexWhere((item) => item.id == member.id);
+    if (index >= 0) {
+      final existing = updatedMembers[index];
+      if (_memberEquals(existing, member)) {
+        return false;
+      }
+      updatedMembers[index] = member;
+    } else {
+      updatedMembers.add(member);
+      updatedMembers.sort(
+        (left, right) => left.createdAt.compareTo(right.createdAt),
+      );
+    }
+
+    _replaceFamilyMembers(snapshot, updatedMembers);
+    return true;
+  }
+
+  void _replaceFamilyMembers(
+    FamilySnapshot snapshot,
+    List<MemberRecord> members,
+  ) {
+    family = FamilySnapshot(
+      id: snapshot.id,
+      name: snapshot.name,
+      createdAt: snapshot.createdAt,
+      members: members,
+      rooms: snapshot.rooms,
+      invites: snapshot.invites,
+      messages: snapshot.messages,
+      settings: snapshot.settings,
+    );
+    notifyListeners();
+  }
+
   void _replaceFamilyMessages(
     FamilySnapshot snapshot,
     List<MessageRecord> messages,
@@ -1401,6 +1627,67 @@ class FamilyChatAppState extends ChangeNotifier {
     notifyListeners();
   }
 
+  int _findMessageInsertIndex(
+    List<MessageRecord> messages,
+    MessageRecord incoming,
+  ) {
+    if (messages.isEmpty) {
+      return 0;
+    }
+    if (!incoming.createdAt.isBefore(messages.last.createdAt)) {
+      return messages.length;
+    }
+    for (var index = messages.length - 1; index >= 0; index--) {
+      if (!incoming.createdAt.isBefore(messages[index].createdAt)) {
+        return index + 1;
+      }
+    }
+    return 0;
+  }
+
+  bool _memberEquals(MemberRecord left, MemberRecord right) {
+    return left.id == right.id &&
+        left.familyId == right.familyId &&
+        left.name == right.name &&
+        left.role == right.role &&
+        left.createdAt == right.createdAt &&
+        left.lastSeenAt == right.lastSeenAt &&
+        left.avatarKey == right.avatarKey &&
+        left.avatarImageDataUrl == right.avatarImageDataUrl;
+  }
+
+  bool _messageEquals(MessageRecord left, MessageRecord right) {
+    return left.id == right.id &&
+        left.roomId == right.roomId &&
+        left.familyId == right.familyId &&
+        left.senderId == right.senderId &&
+        left.type == right.type &&
+        left.text == right.text &&
+        left.imageDataUrl == right.imageDataUrl &&
+        left.createdAt == right.createdAt &&
+        mapEquals(left.readBy, right.readBy);
+  }
+
+  void _logChatTrace(
+    String event, {
+    String? messageId,
+    String? roomId,
+    Map<String, Object?> details = const <String, Object?>{},
+  }) {
+    if (!kDebugMode) {
+      return;
+    }
+
+    final payload = <String, Object?>{
+      'event': event,
+      'messageId': messageId,
+      'roomId': roomId,
+      'timestamp': DateTime.now().toIso8601String(),
+      ...details,
+    };
+    debugPrint('[chat-trace] ${jsonEncode(payload)}');
+  }
+
   String _friendlyError(Object error, {required String fallback}) {
     final text = error.toString();
     if (_shouldRetryQueuedSend(error)) {
@@ -1440,6 +1727,8 @@ class _QueuedSend {
     required this.imageDataUrl,
     required this.imageName,
     required this.optimisticMessage,
+    required this.initiatedAt,
+    required this.optimisticAppendedAt,
   });
 
   final String familyId;
@@ -1450,4 +1739,6 @@ class _QueuedSend {
   final String? imageDataUrl;
   final String? imageName;
   final MessageRecord optimisticMessage;
+  final DateTime initiatedAt;
+  final DateTime optimisticAppendedAt;
 }
