@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:convert';
 
+import 'package:agora_rtc_engine/agora_rtc_engine.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/widgets.dart';
@@ -52,6 +53,7 @@ class FamilyChatAppState extends ChangeNotifier {
   String? profileDraftAvatarImageDataUrl;
 
   RealtimeChannel? _familyChannel;
+  RtcEngine? _rtcEngine;
   Timer? _presenceTimer;
   Timer? _refreshTimer;
   Timer? _refreshDebounceTimer;
@@ -63,8 +65,18 @@ class FamilyChatAppState extends ChangeNotifier {
   bool _markRoomReadRequested = false;
   bool _isSyncingPushSubscription = false;
   bool _readReceiptsActive = true;
+  bool isVoiceCallConnecting = false;
+  bool isVoiceCallJoined = false;
+  bool isVoiceCallMuted = false;
+  bool isVoiceCallAutoplayBlocked = false;
+  String? voiceCallError;
   String? _registeredPushEndpoint;
   String? _registeredPushMemberId;
+  String? _voiceCallRoomId;
+  String? _voiceCallChannelName;
+  String? _voiceCallAppId;
+  int? _voiceCallUid;
+  final Set<int> _voiceCallRemoteUids = <int>{};
   BrowserPushSetupResult? pendingPushHelp;
   PushNavigationIntent? _pendingPushNavigation =
       getPendingPushNavigationIntent();
@@ -136,6 +148,34 @@ class FamilyChatAppState extends ChangeNotifier {
         .where((message) => message.roomId == room.id)
         .toList();
   }
+
+  bool get isActiveRoomVoiceCallActive => activeRoom?.voiceCallActive == true;
+
+  bool get isActiveRoomVoiceCallJoined =>
+      activeRoom != null &&
+      _voiceCallRoomId == activeRoom!.id &&
+      isVoiceCallJoined;
+
+  bool get isActiveRoomVoiceCallConnecting =>
+      activeRoom != null &&
+      _voiceCallRoomId == activeRoom!.id &&
+      isVoiceCallConnecting;
+
+  bool get isActiveRoomVoiceCallMuted =>
+      isActiveRoomVoiceCallJoined && isVoiceCallMuted;
+
+  bool get isActiveRoomVoiceAutoplayBlocked =>
+      activeRoom != null &&
+      _voiceCallRoomId == activeRoom!.id &&
+      isVoiceCallAutoplayBlocked;
+
+  String? get activeRoomVoiceCallError =>
+      activeRoom != null && _voiceCallRoomId == activeRoom!.id
+      ? voiceCallError
+      : null;
+
+  int get activeRoomVoiceParticipantCount =>
+      (isActiveRoomVoiceCallJoined ? 1 : 0) + _voiceCallRemoteUids.length;
 
   void clearToast() {
     toastMessage = null;
@@ -288,6 +328,11 @@ class FamilyChatAppState extends ChangeNotifier {
     final current = session;
     if (current == null) {
       return;
+    }
+    if (_voiceCallRoomId != null &&
+        _voiceCallRoomId != roomId &&
+        (isVoiceCallConnecting || isVoiceCallJoined)) {
+      await leaveVoiceCall();
     }
     session = current.copyWith(activeRoomId: roomId);
     await _persistLocalState();
@@ -653,6 +698,119 @@ class FamilyChatAppState extends ChangeNotifier {
     }
   }
 
+  Future<void> startOrJoinVoiceCall() async {
+    final snapshot = family;
+    final member = currentMember;
+    final room = activeRoom;
+    if (snapshot == null || member == null || room == null) {
+      return;
+    }
+
+    if (_voiceCallRoomId == room.id &&
+        (isVoiceCallConnecting || isVoiceCallJoined)) {
+      return;
+    }
+
+    if (_voiceCallRoomId != null &&
+        _voiceCallRoomId != room.id &&
+        (isVoiceCallConnecting || isVoiceCallJoined)) {
+      await leaveVoiceCall();
+    }
+
+    final startedHere = !room.voiceCallActive;
+    var channelName = room.voiceChannelName ?? '';
+
+    try {
+      if (startedHere) {
+        final payload = await _rpcMap(
+          'app_start_room_voice_call',
+          <String, dynamic>{'p_room_id': room.id, 'p_member_id': member.id},
+        );
+        channelName = payload['channelName'] as String? ?? channelName;
+        _upsertRoomLocally(
+          room.copyWith(
+            voiceCallActive: true,
+            voiceChannelName: channelName,
+            voiceCallStartedAt: DateTime.tryParse(
+              payload['startedAt'] as String? ?? '',
+            ),
+            voiceCallStartedBy: payload['startedBy'] as String?,
+          ),
+        );
+      }
+
+      if (channelName.isEmpty) {
+        throw StateError('Voice channel is not configured.');
+      }
+
+      await _joinVoiceCall(
+        familyId: snapshot.id,
+        roomId: room.id,
+        memberId: member.id,
+        channelName: channelName,
+      );
+    } catch (error) {
+      voiceCallError = _friendlyError(
+        error,
+        fallback: 'Voice call could not be started.',
+      );
+      notifyListeners();
+      _setToast(voiceCallError!);
+    }
+  }
+
+  Future<void> toggleVoiceMute() async {
+    if (_rtcEngine == null || !isVoiceCallJoined) {
+      return;
+    }
+
+    final muted = !isVoiceCallMuted;
+    await _rtcEngine!.muteLocalAudioStream(muted);
+    isVoiceCallMuted = muted;
+    notifyListeners();
+  }
+
+  Future<void> leaveVoiceCall() async {
+    try {
+      await _rtcEngine?.leaveChannel();
+    } catch (_) {
+      // Ignore leave failures.
+    }
+    _resetVoiceCallState(clearError: false);
+    notifyListeners();
+  }
+
+  Future<void> endActiveRoomVoiceCall() async {
+    final member = currentMember;
+    final room = activeRoom;
+    if (member == null || room == null) {
+      return;
+    }
+
+    if (_voiceCallRoomId == room.id &&
+        (isVoiceCallJoined || isVoiceCallConnecting)) {
+      await leaveVoiceCall();
+    }
+
+    await _rpcVoid('app_end_room_voice_call', <String, dynamic>{
+      'p_room_id': room.id,
+      'p_member_id': member.id,
+    });
+    _upsertRoomLocally(
+      room.copyWith(
+        voiceCallActive: false,
+        clearVoiceCallStartedAt: true,
+        clearVoiceCallStartedBy: true,
+      ),
+    );
+    _setToast('Voice call ended.');
+  }
+
+  Future<void> retryVoiceAudioPlayback() async {
+    isVoiceCallAutoplayBlocked = false;
+    notifyListeners();
+  }
+
   Future<void> startProfileEdit() async {
     final member = currentMember;
     if (member == null) {
@@ -935,6 +1093,8 @@ class FamilyChatAppState extends ChangeNotifier {
     switch (payload.table) {
       case 'members':
         return _applyRealtimeMemberPayload(payload);
+      case 'rooms':
+        return _applyRealtimeRoomPayload(payload);
       case 'messages':
         return _applyRealtimeMessagePayload(payload);
       case 'message_reads':
@@ -983,6 +1143,38 @@ class FamilyChatAppState extends ChangeNotifier {
       ),
     );
     return true;
+  }
+
+  bool _applyRealtimeRoomPayload(PostgresChangePayload payload) {
+    if (payload.eventType == PostgresChangeEvent.delete) {
+      return false;
+    }
+
+    final room = _roomFromRealtimeRecord(
+      payload.newRecord,
+      fallbackTimestamp: payload.commitTimestamp,
+    );
+    if (room == null) {
+      return false;
+    }
+
+    final changed = _upsertRoomLocally(room);
+    if (changed) {
+      _logChatTrace(
+        'realtime_room_applied',
+        roomId: room.id,
+        details: <String, Object?>{
+          'eventType': payload.eventType.toString(),
+          'voiceCallActive': room.voiceCallActive,
+        },
+      );
+      if (!room.voiceCallActive &&
+          _voiceCallRoomId == room.id &&
+          (isVoiceCallJoined || isVoiceCallConnecting)) {
+        unawaited(leaveVoiceCall());
+      }
+    }
+    return changed;
   }
 
   bool _applyRealtimeMessagePayload(PostgresChangePayload payload) {
@@ -1047,6 +1239,210 @@ class FamilyChatAppState extends ChangeNotifier {
       );
     }
     return changed;
+  }
+
+  Future<void> _joinVoiceCall({
+    required String familyId,
+    required String roomId,
+    required String memberId,
+    required String channelName,
+  }) async {
+    isVoiceCallConnecting = true;
+    isVoiceCallAutoplayBlocked = false;
+    voiceCallError = null;
+    _voiceCallRoomId = roomId;
+    _voiceCallChannelName = channelName;
+    _voiceCallRemoteUids.clear();
+    notifyListeners();
+
+    try {
+      final tokenPayload = await _fetchVoiceCallToken(
+        familyId: familyId,
+        roomId: roomId,
+        memberId: memberId,
+        channelName: channelName,
+        uid: _voiceCallUid,
+      );
+      await _ensureRtcEngine(tokenPayload.appId);
+      _voiceCallAppId = tokenPayload.appId;
+      _voiceCallUid = tokenPayload.uid;
+      await _rtcEngine!.joinChannel(
+        token: tokenPayload.token,
+        channelId: channelName,
+        uid: tokenPayload.uid,
+        options: const ChannelMediaOptions(
+          clientRoleType: ClientRoleType.clientRoleBroadcaster,
+          autoSubscribeAudio: true,
+          autoSubscribeVideo: false,
+          publishMicrophoneTrack: true,
+          publishCameraTrack: false,
+        ),
+      );
+    } catch (error) {
+      _resetVoiceCallState(clearError: true);
+      voiceCallError = _friendlyError(
+        error,
+        fallback: 'Voice call could not be joined.',
+      );
+      rethrow;
+    }
+  }
+
+  Future<_VoiceCallTokenPayload> _fetchVoiceCallToken({
+    required String familyId,
+    required String roomId,
+    required String memberId,
+    required String channelName,
+    int? uid,
+  }) async {
+    final response = await _supabase.functions.invoke(
+      'agora-token',
+      body: <String, dynamic>{
+        'familyId': familyId,
+        'roomId': roomId,
+        'memberId': memberId,
+        'channelName': channelName,
+        'uid': uid,
+        'ttlSeconds': 3600,
+      },
+    );
+    final payload = Map<String, dynamic>.from(response.data as Map);
+    return _VoiceCallTokenPayload(
+      appId: payload['appId'] as String? ?? '',
+      token: payload['token'] as String? ?? '',
+      uid: (payload['uid'] as num?)?.toInt() ?? 0,
+    );
+  }
+
+  Future<void> _ensureRtcEngine(String appId) async {
+    if (_rtcEngine != null && _voiceCallAppId == appId) {
+      return;
+    }
+
+    await _rtcEngine?.release();
+    final engine = createAgoraRtcEngine();
+    await engine.initialize(
+      RtcEngineContext(
+        appId: appId,
+        channelProfile: ChannelProfileType.channelProfileCommunication,
+      ),
+    );
+    engine.registerEventHandler(
+      RtcEngineEventHandler(
+        onJoinChannelSuccess: (RtcConnection connection, int elapsed) {
+          isVoiceCallConnecting = false;
+          isVoiceCallJoined = true;
+          isVoiceCallMuted = false;
+          voiceCallError = null;
+          _logChatTrace(
+            'voice_join_success',
+            roomId: _voiceCallRoomId,
+            details: <String, Object?>{
+              'uid': connection.localUid,
+              'elapsedMs': elapsed,
+            },
+          );
+          notifyListeners();
+        },
+        onLeaveChannel: (RtcConnection connection, RtcStats stats) {
+          _logChatTrace(
+            'voice_leave_channel',
+            roomId: _voiceCallRoomId,
+            details: <String, Object?>{'duration': stats.duration},
+          );
+        },
+        onUserJoined: (RtcConnection connection, int remoteUid, int elapsed) {
+          _voiceCallRemoteUids.add(remoteUid);
+          notifyListeners();
+        },
+        onUserOffline:
+            (
+              RtcConnection connection,
+              int remoteUid,
+              UserOfflineReasonType reason,
+            ) {
+              _voiceCallRemoteUids.remove(remoteUid);
+              notifyListeners();
+            },
+        onTokenPrivilegeWillExpire: (RtcConnection connection, String token) {
+          unawaited(_renewVoiceCallToken(reason: 'will_expire'));
+        },
+        onRequestToken: (RtcConnection connection) {
+          unawaited(_renewVoiceCallToken(reason: 'request_token'));
+        },
+        onError: (ErrorCodeType err, String msg) {
+          final lower = msg.toLowerCase();
+          if (lower.contains('autoplay')) {
+            isVoiceCallAutoplayBlocked = true;
+          }
+          if (lower.contains('permission') || lower.contains('notallowed')) {
+            voiceCallError = 'Microphone permission was denied.';
+          }
+          _logChatTrace(
+            'voice_error',
+            roomId: _voiceCallRoomId,
+            details: <String, Object?>{'code': err.toString(), 'message': msg},
+          );
+          notifyListeners();
+        },
+      ),
+    );
+    await engine.enableAudio();
+    await engine.disableVideo();
+    await engine.setClientRole(role: ClientRoleType.clientRoleBroadcaster);
+    _rtcEngine = engine;
+  }
+
+  Future<void> _renewVoiceCallToken({required String reason}) async {
+    final snapshot = family;
+    final member = currentMember;
+    final roomId = _voiceCallRoomId;
+    final channelName = _voiceCallChannelName;
+    final uid = _voiceCallUid;
+    if (snapshot == null ||
+        member == null ||
+        roomId == null ||
+        channelName == null ||
+        uid == null ||
+        _rtcEngine == null) {
+      return;
+    }
+
+    try {
+      final tokenPayload = await _fetchVoiceCallToken(
+        familyId: snapshot.id,
+        roomId: roomId,
+        memberId: member.id,
+        channelName: channelName,
+        uid: uid,
+      );
+      await _rtcEngine!.renewToken(tokenPayload.token);
+      _logChatTrace(
+        'voice_token_renewed',
+        roomId: roomId,
+        details: <String, Object?>{'reason': reason},
+      );
+    } catch (error) {
+      _logChatTrace(
+        'voice_token_renew_failed',
+        roomId: roomId,
+        details: <String, Object?>{'reason': reason, 'error': error.toString()},
+      );
+    }
+  }
+
+  void _resetVoiceCallState({required bool clearError}) {
+    isVoiceCallConnecting = false;
+    isVoiceCallJoined = false;
+    isVoiceCallMuted = false;
+    isVoiceCallAutoplayBlocked = false;
+    _voiceCallRoomId = null;
+    _voiceCallChannelName = null;
+    _voiceCallUid = null;
+    _voiceCallRemoteUids.clear();
+    if (clearError) {
+      voiceCallError = null;
+    }
   }
 
   Future<void> _runBusy(Future<void> Function() operation) async {
@@ -1493,6 +1889,38 @@ class FamilyChatAppState extends ChangeNotifier {
     );
   }
 
+  RoomRecord? _roomFromRealtimeRecord(
+    Map<String, dynamic> record, {
+    required DateTime fallbackTimestamp,
+  }) {
+    final snapshot = family;
+    final id = record['id']?.toString();
+    final familyId = record['family_id']?.toString();
+    if (snapshot == null || id == null || familyId == null) {
+      return null;
+    }
+
+    final existing = snapshot.rooms.where((room) => room.id == id).firstOrNull;
+    if (existing == null) {
+      return null;
+    }
+
+    return existing.copyWith(
+      familyId: familyId,
+      type: record['type']?.toString() ?? existing.type,
+      title: record['title']?.toString() ?? existing.title,
+      createdAt:
+          DateTime.tryParse(record['created_at']?.toString() ?? '') ??
+          fallbackTimestamp,
+      voiceCallActive: record['voice_call_active'] == true,
+      voiceChannelName: record['voice_channel_name']?.toString(),
+      voiceCallStartedAt: DateTime.tryParse(
+        record['voice_call_started_at']?.toString() ?? '',
+      ),
+      voiceCallStartedBy: record['voice_call_started_by']?.toString(),
+    );
+  }
+
   bool _shouldRetryQueuedSend(Object error) {
     final text = error.toString().toLowerCase();
     return text.contains('statement timeout') ||
@@ -1686,6 +2114,42 @@ class FamilyChatAppState extends ChangeNotifier {
     return true;
   }
 
+  bool _upsertRoomLocally(RoomRecord room) {
+    final snapshot = family;
+    if (snapshot == null) {
+      return false;
+    }
+
+    final updatedRooms = List<RoomRecord>.from(snapshot.rooms);
+    final index = updatedRooms.indexWhere((item) => item.id == room.id);
+    if (index < 0) {
+      return false;
+    }
+
+    final existing = updatedRooms[index];
+    if (_roomEquals(existing, room)) {
+      return false;
+    }
+
+    updatedRooms[index] = room;
+    _replaceFamilyRooms(snapshot, updatedRooms);
+    return true;
+  }
+
+  void _replaceFamilyRooms(FamilySnapshot snapshot, List<RoomRecord> rooms) {
+    family = FamilySnapshot(
+      id: snapshot.id,
+      name: snapshot.name,
+      createdAt: snapshot.createdAt,
+      members: snapshot.members,
+      rooms: rooms,
+      invites: snapshot.invites,
+      messages: snapshot.messages,
+      settings: snapshot.settings,
+    );
+    notifyListeners();
+  }
+
   void _replaceFamilyMembers(
     FamilySnapshot snapshot,
     List<MemberRecord> members,
@@ -1789,6 +2253,20 @@ class FamilyChatAppState extends ChangeNotifier {
         left.avatarImageDataUrl == right.avatarImageDataUrl;
   }
 
+  bool _roomEquals(RoomRecord left, RoomRecord right) {
+    return left.id == right.id &&
+        left.familyId == right.familyId &&
+        left.type == right.type &&
+        left.title == right.title &&
+        left.createdAt == right.createdAt &&
+        listEquals(left.memberIds, right.memberIds) &&
+        mapEquals(left.mutedBy, right.mutedBy) &&
+        left.voiceCallActive == right.voiceCallActive &&
+        left.voiceChannelName == right.voiceChannelName &&
+        left.voiceCallStartedAt == right.voiceCallStartedAt &&
+        left.voiceCallStartedBy == right.voiceCallStartedBy;
+  }
+
   bool _messageEquals(MessageRecord left, MessageRecord right) {
     return left.id == right.id &&
         left.roomId == right.roomId &&
@@ -1848,6 +2326,7 @@ class FamilyChatAppState extends ChangeNotifier {
     _presenceTimer?.cancel();
     _refreshTimer?.cancel();
     _refreshDebounceTimer?.cancel();
+    unawaited(_rtcEngine?.release() ?? Future<void>.value());
     super.dispose();
   }
 }
@@ -1880,4 +2359,16 @@ class _QueuedSend {
   final MessageRecord optimisticMessage;
   final DateTime initiatedAt;
   final DateTime optimisticAppendedAt;
+}
+
+class _VoiceCallTokenPayload {
+  const _VoiceCallTokenPayload({
+    required this.appId,
+    required this.token,
+    required this.uid,
+  });
+
+  final String appId;
+  final String token;
+  final int uid;
 }

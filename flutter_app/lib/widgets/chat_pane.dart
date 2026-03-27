@@ -274,10 +274,34 @@ class _ChatPaneState extends State<ChatPane> {
           child: _ChatHeader(
             title: roomTitle(room, family, member.id, family.members),
             isMuted: muted,
+            isVoiceCallActive: room.voiceCallActive,
+            isVoiceCallConnecting: appState.isActiveRoomVoiceCallConnecting,
+            isVoiceCallJoined: appState.isActiveRoomVoiceCallJoined,
+            isVoiceCallMuted: appState.isActiveRoomVoiceCallMuted,
             onOpenDrawer: widget.onOpenDrawer,
             onToggleMute: appState.toggleMute,
+            onStartOrJoinVoiceCall: appState.startOrJoinVoiceCall,
+            onToggleVoiceMute: appState.toggleVoiceMute,
+            onLeaveVoiceCall: appState.leaveVoiceCall,
+            onEndVoiceCall: appState.endActiveRoomVoiceCall,
           ),
         ),
+        if (room.voiceCallActive ||
+            appState.isActiveRoomVoiceCallConnecting ||
+            appState.isActiveRoomVoiceCallJoined ||
+            (appState.activeRoomVoiceCallError?.isNotEmpty ?? false))
+          Padding(
+            padding: const EdgeInsets.fromLTRB(4, 0, 4, 12),
+            child: _VoiceCallBanner(
+              isActive: room.voiceCallActive,
+              isConnecting: appState.isActiveRoomVoiceCallConnecting,
+              isJoined: appState.isActiveRoomVoiceCallJoined,
+              participantCount: appState.activeRoomVoiceParticipantCount,
+              isAutoplayBlocked: appState.isActiveRoomVoiceAutoplayBlocked,
+              errorText: appState.activeRoomVoiceCallError,
+              onRetryAudio: appState.retryVoiceAudioPlayback,
+            ),
+          ),
         Expanded(
           child: messages.isEmpty
               ? const _EmptyChatState()
@@ -343,14 +367,30 @@ class _ChatHeader extends StatelessWidget {
   const _ChatHeader({
     required this.title,
     required this.isMuted,
+    required this.isVoiceCallActive,
+    required this.isVoiceCallConnecting,
+    required this.isVoiceCallJoined,
+    required this.isVoiceCallMuted,
     required this.onOpenDrawer,
     required this.onToggleMute,
+    required this.onStartOrJoinVoiceCall,
+    required this.onToggleVoiceMute,
+    required this.onLeaveVoiceCall,
+    required this.onEndVoiceCall,
   });
 
   final String title;
   final bool isMuted;
+  final bool isVoiceCallActive;
+  final bool isVoiceCallConnecting;
+  final bool isVoiceCallJoined;
+  final bool isVoiceCallMuted;
   final VoidCallback onOpenDrawer;
   final VoidCallback onToggleMute;
+  final VoidCallback onStartOrJoinVoiceCall;
+  final VoidCallback onToggleVoiceMute;
+  final VoidCallback onLeaveVoiceCall;
+  final VoidCallback onEndVoiceCall;
 
   @override
   Widget build(BuildContext context) {
@@ -372,6 +412,66 @@ class _ChatHeader extends StatelessWidget {
           ),
         ),
         IconButton.filledTonal(
+          onPressed: isVoiceCallConnecting ? null : onStartOrJoinVoiceCall,
+          style: IconButton.styleFrom(
+            backgroundColor: isVoiceCallActive
+                ? AppColors.pinkDeep
+                : AppColors.sky,
+            foregroundColor: Colors.white,
+          ),
+          icon: Icon(
+            isVoiceCallConnecting
+                ? Icons.more_horiz_rounded
+                : isVoiceCallJoined
+                ? Icons.phone_in_talk_rounded
+                : isVoiceCallActive
+                ? Icons.call_rounded
+                : Icons.add_call,
+          ),
+          tooltip: isVoiceCallJoined
+              ? 'In voice call'
+              : isVoiceCallActive
+              ? 'Join voice call'
+              : 'Start voice call',
+        ),
+        if (isVoiceCallJoined) ...<Widget>[
+          const SizedBox(width: 8),
+          IconButton.filledTonal(
+            onPressed: onToggleVoiceMute,
+            style: IconButton.styleFrom(
+              backgroundColor: isVoiceCallMuted
+                  ? AppColors.butter
+                  : AppColors.lavender,
+              foregroundColor: AppColors.plum,
+            ),
+            icon: Icon(
+              isVoiceCallMuted ? Icons.mic_off_rounded : Icons.mic_rounded,
+            ),
+            tooltip: isVoiceCallMuted ? 'Unmute microphone' : 'Mute microphone',
+          ),
+          const SizedBox(width: 8),
+          IconButton.filledTonal(
+            onPressed: onLeaveVoiceCall,
+            style: IconButton.styleFrom(
+              backgroundColor: AppColors.paper,
+              foregroundColor: AppColors.plum,
+            ),
+            icon: const Icon(Icons.logout_rounded),
+            tooltip: 'Leave voice call',
+          ),
+          const SizedBox(width: 8),
+          IconButton.filled(
+            onPressed: onEndVoiceCall,
+            style: IconButton.styleFrom(
+              backgroundColor: AppColors.pinkDeep,
+              foregroundColor: Colors.white,
+            ),
+            icon: const Icon(Icons.call_end_rounded),
+            tooltip: 'End voice call',
+          ),
+          const SizedBox(width: 8),
+        ],
+        IconButton.filledTonal(
           onPressed: onToggleMute,
           style: IconButton.styleFrom(
             backgroundColor: AppColors.lavenderDeep,
@@ -385,6 +485,87 @@ class _ChatHeader extends StatelessWidget {
           tooltip: isMuted ? '알림 꺼짐' : '알림 켜짐',
         ),
       ],
+    );
+  }
+}
+
+class _VoiceCallBanner extends StatelessWidget {
+  const _VoiceCallBanner({
+    required this.isActive,
+    required this.isConnecting,
+    required this.isJoined,
+    required this.participantCount,
+    required this.isAutoplayBlocked,
+    required this.errorText,
+    required this.onRetryAudio,
+  });
+
+  final bool isActive;
+  final bool isConnecting;
+  final bool isJoined;
+  final int participantCount;
+  final bool isAutoplayBlocked;
+  final String? errorText;
+  final VoidCallback onRetryAudio;
+
+  @override
+  Widget build(BuildContext context) {
+    final statusText = isConnecting
+        ? 'Connecting voice call...'
+        : isJoined
+        ? 'Voice call connected'
+        : isActive
+        ? 'Voice call in progress'
+        : 'Voice call unavailable';
+
+    return StitchedPanel(
+      color: AppColors.paper,
+      borderRadius: BorderRadius.circular(AppRadii.lg),
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+      child: Row(
+        children: <Widget>[
+          Container(
+            width: 42,
+            height: 42,
+            decoration: BoxDecoration(
+              color: AppColors.sky.withValues(alpha: 0.24),
+              borderRadius: BorderRadius.circular(AppRadii.pill),
+            ),
+            alignment: Alignment.center,
+            child: Icon(
+              isJoined ? Icons.phone_in_talk_rounded : Icons.call_rounded,
+              color: AppColors.plum,
+            ),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: <Widget>[
+                Text(
+                  statusText,
+                  style: Theme.of(context).textTheme.titleMedium,
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  errorText?.isNotEmpty == true
+                      ? errorText!
+                      : participantCount > 0
+                      ? 'Participants: $participantCount'
+                      : 'Tap the call button to join the room voice call.',
+                  style: Theme.of(context).textTheme.bodyMedium,
+                ),
+              ],
+            ),
+          ),
+          if (isAutoplayBlocked)
+            FilledButton.tonalIcon(
+              onPressed: onRetryAudio,
+              icon: const Icon(Icons.volume_up_rounded),
+              label: const Text('Enable audio'),
+            ),
+        ],
+      ),
     );
   }
 }

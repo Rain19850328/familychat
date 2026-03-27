@@ -214,6 +214,10 @@ class RoomRecord {
     required this.createdAt,
     required this.memberIds,
     required this.mutedBy,
+    required this.voiceCallActive,
+    required this.voiceChannelName,
+    required this.voiceCallStartedAt,
+    required this.voiceCallStartedBy,
   });
 
   final String id;
@@ -223,6 +227,47 @@ class RoomRecord {
   final DateTime createdAt;
   final List<String> memberIds;
   final Map<String, bool> mutedBy;
+  final bool voiceCallActive;
+  final String? voiceChannelName;
+  final DateTime? voiceCallStartedAt;
+  final String? voiceCallStartedBy;
+
+  RoomRecord copyWith({
+    String? id,
+    String? familyId,
+    String? type,
+    String? title,
+    DateTime? createdAt,
+    List<String>? memberIds,
+    Map<String, bool>? mutedBy,
+    bool? voiceCallActive,
+    String? voiceChannelName,
+    DateTime? voiceCallStartedAt,
+    String? voiceCallStartedBy,
+    bool clearVoiceChannelName = false,
+    bool clearVoiceCallStartedAt = false,
+    bool clearVoiceCallStartedBy = false,
+  }) {
+    return RoomRecord(
+      id: id ?? this.id,
+      familyId: familyId ?? this.familyId,
+      type: type ?? this.type,
+      title: title ?? this.title,
+      createdAt: createdAt ?? this.createdAt,
+      memberIds: memberIds ?? this.memberIds,
+      mutedBy: mutedBy ?? this.mutedBy,
+      voiceCallActive: voiceCallActive ?? this.voiceCallActive,
+      voiceChannelName: clearVoiceChannelName
+          ? null
+          : voiceChannelName ?? this.voiceChannelName,
+      voiceCallStartedAt: clearVoiceCallStartedAt
+          ? null
+          : voiceCallStartedAt ?? this.voiceCallStartedAt,
+      voiceCallStartedBy: clearVoiceCallStartedBy
+          ? null
+          : voiceCallStartedBy ?? this.voiceCallStartedBy,
+    );
+  }
 
   factory RoomRecord.fromJson(Map<String, dynamic> json) {
     return RoomRecord(
@@ -239,6 +284,12 @@ class RoomRecord {
       mutedBy: ((json['mutedBy'] as Map?) ?? const {}).map(
         (key, value) => MapEntry(key.toString(), value == true),
       ),
+      voiceCallActive: json['voiceCallActive'] == true,
+      voiceChannelName: json['voiceChannelName'] as String?,
+      voiceCallStartedAt: DateTime.tryParse(
+        json['voiceCallStartedAt'] as String? ?? '',
+      ),
+      voiceCallStartedBy: json['voiceCallStartedBy'] as String?,
     );
   }
 }

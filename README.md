@@ -32,4 +32,10 @@ cd flutter_app
 - DB 마이그레이션: `.github/workflows/supabase-deploy.yml`
 - Edge Function: `.github/workflows/supabase-functions-deploy.yml`
 
+## Agora Voice Call
+
+- 실시간 음성통화 토큰은 `supabase/functions/agora-token` 에서 발급합니다.
+- 운영 환경에는 Supabase Edge Function 비밀값으로 `AGORA_APP_ID` 와 `AGORA_APP_CERTIFICATE` 를 설정해야 합니다.
+- Flutter Web 은 `agora_rtc_engine` 와 Agora web bridge script(`iris-web-rtc`)를 사용합니다.
+
 `main` 브랜치에 푸시하면 Flutter Web 앱이 Cloudflare Pages로 배포됩니다.

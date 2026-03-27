@@ -38,3 +38,6 @@ jobs:
 
       - name: Deploy push-notifications function
         run: supabase functions deploy push-notifications --project-ref "$SUPABASE_PROJECT_ID"
+
+      - name: Deploy agora-token function
+        run: supabase functions deploy agora-token --project-ref "$SUPABASE_PROJECT_ID"

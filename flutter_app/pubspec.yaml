@@ -1,12 +1,13 @@
 name: familychat_flutter
 description: "Closed family chat rebuilt with Flutter Web."
 publish_to: 'none'
-version: 1.1.0+24
+version: 1.2.0+25
 
 environment:
   sdk: ^3.11.3
 
 dependencies:
+  agora_rtc_engine: ^6.5.3
   flutter:
     sdk: flutter
   cupertino_icons: ^1.0.8
