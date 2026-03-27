@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../app_state.dart';
+import '../platform/web_push_types.dart';
 import '../models.dart';
 import '../ui/design_tokens.dart';
 
@@ -354,4 +355,128 @@ Future<void> showProfileDialog(
     },
   );
   controller.dispose();
+}
+
+Future<void> showPushPermissionHelpDialog(
+  BuildContext context,
+  BrowserPushSetupResult result,
+) async {
+  final platform = Theme.of(context).platform;
+  final isApple = platform == TargetPlatform.iOS || platform == TargetPlatform.macOS;
+  final title = switch (result.status) {
+    BrowserPushSetupStatus.permissionDenied => '알림 권한이 차단되어 있습니다',
+    BrowserPushSetupStatus.unsupported => '현재 브라우저는 웹 푸시를 지원하지 않습니다',
+    BrowserPushSetupStatus.unavailable => '브라우저 푸시 등록이 완료되지 않았습니다',
+    BrowserPushSetupStatus.subscribed => '알림이 연결되었습니다',
+  };
+
+  await showDialog<void>(
+    context: context,
+    builder: (context) {
+      return Dialog(
+        backgroundColor: Colors.transparent,
+        elevation: 0,
+        child: StitchedPanel(
+          padding: const EdgeInsets.all(22),
+          color: AppColors.creamSoft,
+          child: SizedBox(
+            width: 520,
+            child: SingleChildScrollView(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisSize: MainAxisSize.min,
+                children: <Widget>[
+                  Text(title, style: Theme.of(context).textTheme.headlineSmall),
+                  const SizedBox(height: 10),
+                  Text(
+                    isApple
+                        ? '아이폰은 Safari로 연 뒤 홈 화면에 추가한 웹앱에서만 알림이 동작할 수 있습니다.'
+                        : '안드로이드는 일반 Chrome 또는 Edge에서 열고 사이트 알림 권한을 허용해야 합니다.',
+                    style: Theme.of(context).textTheme.bodyMedium,
+                  ),
+                  const SizedBox(height: 18),
+                  _HelpBlock(
+                    title: '안드로이드 Chrome',
+                    steps: const <String>[
+                      'Chrome에서 사이트를 직접 엽니다.',
+                      '주소창 왼쪽 아이콘 -> 권한 또는 사이트 설정 -> 알림 -> 허용',
+                      'Chrome 우측 상단 점 3개 -> 설정 -> 사이트 설정 -> 알림 -> 알림 허용',
+                      '휴대폰 설정 -> 앱 -> Chrome -> 알림 -> 허용',
+                    ],
+                  ),
+                  const SizedBox(height: 12),
+                  _HelpBlock(
+                    title: '아이폰 Safari',
+                    steps: const <String>[
+                      'Safari에서 사이트를 엽니다.',
+                      '공유 버튼 -> 홈 화면에 추가 -> 추가',
+                      '홈 화면에 생성된 아이콘으로 다시 실행합니다.',
+                      '아이폰 설정 -> 알림 -> 해당 웹앱 이름 -> 알림 허용',
+                    ],
+                  ),
+                  const SizedBox(height: 12),
+                  _HelpBlock(
+                    title: '데스크톱 Chrome',
+                    steps: const <String>[
+                      'Chrome 우측 상단 점 3개 -> 설정',
+                      '개인정보 및 보안 -> 사이트 설정 -> 알림',
+                      '알림을 허용으로 바꾸고, 차단 목록에 사이트가 있으면 제거',
+                      '사이트 접속 후 주소창 왼쪽 아이콘 -> 사이트 설정 -> 알림 -> 허용',
+                    ],
+                  ),
+                  if ((result.detail ?? '').isNotEmpty) ...<Widget>[
+                    const SizedBox(height: 14),
+                    Text(
+                      '진단 정보: ${result.detail}',
+                      style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                        color: AppColors.inkSoft,
+                      ),
+                    ),
+                  ],
+                  const SizedBox(height: 18),
+                  Align(
+                    alignment: Alignment.centerRight,
+                    child: FilledButton(
+                      onPressed: () => Navigator.of(context).pop(),
+                      child: const Text('확인'),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ),
+      );
+    },
+  );
+}
+
+class _HelpBlock extends StatelessWidget {
+  const _HelpBlock({required this.title, required this.steps});
+
+  final String title;
+  final List<String> steps;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: AppColors.paper,
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: AppColors.lavender.withValues(alpha: 0.55)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: <Widget>[
+          Text(title, style: Theme.of(context).textTheme.titleMedium),
+          const SizedBox(height: 8),
+          for (var i = 0; i < steps.length; i++) ...<Widget>[
+            Text('${i + 1}. ${steps[i]}', style: Theme.of(context).textTheme.bodyMedium),
+            if (i != steps.length - 1) const SizedBox(height: 6),
+          ],
+        ],
+      ),
+    );
+  }
 }

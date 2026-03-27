@@ -4,6 +4,7 @@ import 'app_state.dart';
 import 'ui/design_tokens.dart';
 import 'widgets/chat_pane.dart';
 import 'widgets/onboarding_pane.dart';
+import 'widgets/common.dart';
 import 'widgets/sidebar.dart';
 
 class FamilyChatHome extends StatefulWidget {
@@ -46,6 +47,16 @@ class _FamilyChatHomeState extends State<FamilyChatHome> {
         _clearTransientState();
       }
       setState(() {});
+    }
+    final pushHelp = widget.appState.pendingPushHelp;
+    if (mounted && pushHelp != null) {
+      WidgetsBinding.instance.addPostFrameCallback((_) async {
+        if (!mounted) {
+          return;
+        }
+        widget.appState.clearPendingPushHelp();
+        await showPushPermissionHelpDialog(context, pushHelp);
+      });
     }
     final toast = widget.appState.toastMessage;
     if (!mounted || toast == null || toast.isEmpty) {

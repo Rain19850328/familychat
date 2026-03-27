@@ -62,6 +62,7 @@ class FamilyChatAppState extends ChangeNotifier {
   bool _isSyncingPushSubscription = false;
   String? _registeredPushEndpoint;
   String? _registeredPushMemberId;
+  BrowserPushSetupResult? pendingPushHelp;
   PushNavigationIntent? _pendingPushNavigation = getPendingPushNavigationIntent();
 
   Future<void> bootstrap() async {
@@ -135,6 +136,10 @@ class FamilyChatAppState extends ChangeNotifier {
   void clearToast() {
     toastMessage = null;
     notifyListeners();
+  }
+
+  void clearPendingPushHelp() {
+    pendingPushHelp = null;
   }
 
   Future<void> createFamily({
@@ -446,6 +451,10 @@ class FamilyChatAppState extends ChangeNotifier {
     }
 
     if (muted) {
+      if (pushSetup != null &&
+          pushSetup.status != BrowserPushSetupStatus.subscribed) {
+        pendingPushHelp = pushSetup;
+      }
       _setToast(_pushSetupToast(pushSetup));
     } else {
       _setToast('이 채팅방 알림을 껐습니다.');
