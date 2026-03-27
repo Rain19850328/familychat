@@ -7,6 +7,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import 'models.dart';
+import 'platform/web_push.dart';
 
 const String kSupabaseUrl = String.fromEnvironment(
   'SUPABASE_URL',
@@ -58,6 +59,10 @@ class FamilyChatAppState extends ChangeNotifier {
   bool _refreshRequestedAfterCurrent = false;
   bool _isMarkingRoomRead = false;
   bool _markRoomReadRequested = false;
+  bool _isSyncingPushSubscription = false;
+  String? _registeredPushEndpoint;
+  String? _registeredPushMemberId;
+  PushNavigationIntent? _pendingPushNavigation = getPendingPushNavigationIntent();
 
   Future<void> bootstrap() async {
     _hydrateLocalState();
@@ -70,6 +75,7 @@ class FamilyChatAppState extends ChangeNotifier {
       _startPresenceTimer();
       _startRefreshTimer();
       unawaited(touchCurrentMember());
+      unawaited(_syncPushSubscription());
     }
   }
 
@@ -171,6 +177,7 @@ class FamilyChatAppState extends ChangeNotifier {
     _startPresenceTimer();
     _startRefreshTimer();
     unawaited(touchCurrentMember());
+    unawaited(_syncPushSubscription());
   }
 
   Future<void> refreshFamily({bool skipErrorToast = false}) async {
@@ -219,6 +226,7 @@ class FamilyChatAppState extends ChangeNotifier {
       _syncCurrentProfileFromSnapshot();
       await _persistLocalState();
       notifyListeners();
+      await _applyPendingPushNavigationIfReady();
       if (resolvedRoom != null &&
           _hasUnreadMessages(snapshot, resolvedRoom, current.memberId)) {
         unawaited(markActiveRoomRead());
@@ -557,6 +565,9 @@ class FamilyChatAppState extends ChangeNotifier {
     String? toast,
   }) async {
     final current = session;
+    if (current != null) {
+      await _detachPushSubscription(current.memberId);
+    }
     if (removeCurrentProfile && current != null) {
       savedProfiles.removeWhere(
         (profile) =>
@@ -630,6 +641,7 @@ class FamilyChatAppState extends ChangeNotifier {
     _startPresenceTimer();
     _startRefreshTimer();
     await touchCurrentMember();
+    unawaited(_syncPushSubscription());
   }
 
   void _subscribeFamilyRealtime() {
@@ -922,6 +934,99 @@ class FamilyChatAppState extends ChangeNotifier {
         )
         .map((item) => item.optimisticMessage)
         .toList();
+  }
+
+  Future<void> _syncPushSubscription() async {
+    if (!browserPushSupported || _isSyncingPushSubscription) {
+      return;
+    }
+
+    final current = session;
+    final member = currentMember;
+    if (current == null || member == null) {
+      return;
+    }
+    if (_registeredPushMemberId == member.id &&
+        _registeredPushEndpoint != null &&
+        _registeredPushEndpoint!.isNotEmpty) {
+      return;
+    }
+
+    _isSyncingPushSubscription = true;
+    try {
+      final subscription = await ensureBrowserPushSubscription(
+        pushConfigUrl: '$kSupabaseUrl/functions/v1/push-notifications',
+        serviceWorkerPath: 'push_service_worker.js',
+      );
+      if (subscription == null) {
+        return;
+      }
+
+      await _rpcMap('app_upsert_push_subscription', <String, dynamic>{
+        'p_member_id': member.id,
+        'p_endpoint': subscription.endpoint,
+        'p_p256dh': subscription.p256dh,
+        'p_auth': subscription.auth,
+        'p_user_agent': subscription.userAgent,
+      });
+      _registeredPushEndpoint = subscription.endpoint;
+      _registeredPushMemberId = member.id;
+    } catch (_) {
+      // Keep chat usable even if browser push registration fails.
+    } finally {
+      _isSyncingPushSubscription = false;
+    }
+  }
+
+  Future<void> _detachPushSubscription(String memberId) async {
+    if (!browserPushSupported) {
+      return;
+    }
+
+    try {
+      final endpoint = await removeBrowserPushSubscription(
+        serviceWorkerPath: 'push_service_worker.js',
+      );
+      await _rpcVoid('app_remove_push_subscription', <String, dynamic>{
+        'p_member_id': memberId,
+        'p_endpoint': endpoint ?? _registeredPushEndpoint,
+      });
+    } catch (_) {
+      // Ignore push cleanup failures during logout or invalidation.
+    } finally {
+      _registeredPushEndpoint = null;
+      _registeredPushMemberId = null;
+    }
+  }
+
+  Future<void> _applyPendingPushNavigationIfReady() async {
+    final intent = _pendingPushNavigation;
+    final current = session;
+    final snapshot = family;
+    if (intent == null || current == null || snapshot == null) {
+      return;
+    }
+    if (intent.familyId != current.familyId) {
+      return;
+    }
+
+    final targetRoom = snapshot.rooms
+        .where((room) => room.id == intent.roomId)
+        .firstOrNull;
+    if (targetRoom == null) {
+      _pendingPushNavigation = null;
+      clearPendingPushNavigationIntent();
+      return;
+    }
+
+    if (current.activeRoomId != targetRoom.id) {
+      session = current.copyWith(activeRoomId: targetRoom.id);
+      await _persistLocalState();
+      notifyListeners();
+    }
+    _pendingPushNavigation = null;
+    clearPendingPushNavigationIntent();
+    unawaited(markActiveRoomRead());
   }
 
   void _setToast(String value) {
