@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import 'app_state.dart';
+import 'platform/window_interaction.dart';
 import 'ui/design_tokens.dart';
 import 'widgets/chat_pane.dart';
 import 'widgets/onboarding_pane.dart';
@@ -16,22 +17,36 @@ class FamilyChatHome extends StatefulWidget {
   State<FamilyChatHome> createState() => _FamilyChatHomeState();
 }
 
-class _FamilyChatHomeState extends State<FamilyChatHome> {
+class _FamilyChatHomeState extends State<FamilyChatHome>
+    with WidgetsBindingObserver {
   final GlobalKey<ScaffoldState> _scaffoldKey = GlobalKey<ScaffoldState>();
   final TextEditingController _familyNameController = TextEditingController();
   final TextEditingController _adminNameController = TextEditingController();
   final TextEditingController _inviteCodeController = TextEditingController();
   final TextEditingController _memberNameController = TextEditingController();
   final TextEditingController _composerController = TextEditingController();
+  WindowInteractionObserver? _windowInteractionObserver;
+  AppLifecycleState? _lifecycleState;
+  bool _windowInteractive = true;
 
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     widget.appState.addListener(_handleStateChange);
+    _windowInteractive = currentWindowInteractionState();
+    _windowInteractionObserver = observeWindowInteraction((isInteractive) {
+      _windowInteractive = isInteractive;
+      _syncReadReceiptState();
+    });
+    _syncReadReceiptState();
   }
 
   @override
   void dispose() {
+    widget.appState.setReadReceiptsActive(false);
+    _windowInteractionObserver?.dispose();
+    WidgetsBinding.instance.removeObserver(this);
     widget.appState.removeListener(_handleStateChange);
     _familyNameController.dispose();
     _adminNameController.dispose();
@@ -39,6 +54,12 @@ class _FamilyChatHomeState extends State<FamilyChatHome> {
     _memberNameController.dispose();
     _composerController.dispose();
     super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    _lifecycleState = state;
+    _syncReadReceiptState();
   }
 
   void _handleStateChange() {
@@ -76,6 +97,14 @@ class _FamilyChatHomeState extends State<FamilyChatHome> {
     if (_scaffoldKey.currentState?.isDrawerOpen ?? false) {
       Navigator.of(context).pop();
     }
+  }
+
+  void _syncReadReceiptState() {
+    final lifecycleInteractive =
+        _lifecycleState == null || _lifecycleState == AppLifecycleState.resumed;
+    widget.appState.setReadReceiptsActive(
+      lifecycleInteractive && _windowInteractive,
+    );
   }
 
   @override

@@ -61,6 +61,7 @@ class FamilyChatAppState extends ChangeNotifier {
   bool _isMarkingRoomRead = false;
   bool _markRoomReadRequested = false;
   bool _isSyncingPushSubscription = false;
+  bool _readReceiptsActive = true;
   String? _registeredPushEndpoint;
   String? _registeredPushMemberId;
   BrowserPushSetupResult? pendingPushHelp;
@@ -458,11 +459,33 @@ class FamilyChatAppState extends ChangeNotifier {
     notifyListeners();
   }
 
-  Future<void> markActiveRoomRead() async {
+  void setReadReceiptsActive(bool isActive) {
+    if (_readReceiptsActive == isActive) {
+      return;
+    }
+    _readReceiptsActive = isActive;
+    _logChatTrace(
+      'read_receipt_gate_changed',
+      details: <String, Object?>{'isActive': isActive},
+    );
+    if (isActive) {
+      unawaited(markActiveRoomRead(reason: 'focus_regained'));
+    }
+  }
+
+  Future<void> markActiveRoomRead({String reason = 'unspecified'}) async {
     final snapshot = family;
     final member = currentMember;
     final room = activeRoom;
     if (snapshot == null || member == null || room == null) {
+      return;
+    }
+    if (!_readReceiptsActive) {
+      _logChatTrace(
+        'read_receipt_skipped_inactive',
+        roomId: room.id,
+        details: <String, Object?>{'reason': reason},
+      );
       return;
     }
     if (!_hasUnreadMessages(snapshot, room.id, member.id)) {
@@ -476,17 +499,27 @@ class FamilyChatAppState extends ChangeNotifier {
     _isMarkingRoomRead = true;
     _markRoomReadLocally(room.id, member.id);
     try {
+      _logChatTrace(
+        'read_receipt_start',
+        roomId: room.id,
+        details: <String, Object?>{'reason': reason},
+      );
       await _rpcVoid('app_mark_room_read', <String, dynamic>{
         'p_room_id': room.id,
         'p_member_id': member.id,
       });
+      _logChatTrace(
+        'read_receipt_complete',
+        roomId: room.id,
+        details: <String, Object?>{'reason': reason},
+      );
     } catch (_) {
       // Ignore read marker failures.
     } finally {
       _isMarkingRoomRead = false;
       if (_markRoomReadRequested) {
         _markRoomReadRequested = false;
-        unawaited(markActiveRoomRead());
+        unawaited(markActiveRoomRead(reason: 'queued_after:$reason'));
       }
     }
   }
