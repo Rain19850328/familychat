@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import 'app_state.dart';
+import 'models.dart';
 import 'platform/window_interaction.dart';
 import 'ui/design_tokens.dart';
 import 'widgets/chat_pane.dart';
@@ -111,6 +112,10 @@ class _FamilyChatHomeState extends State<FamilyChatHome>
   Widget build(BuildContext context) {
     final appState = widget.appState;
     final isDesktop = MediaQuery.sizeOf(context).width >= 980;
+    final overlayRoom = appState.voiceCallOverlayRoom;
+    final overlayCaller = appState.voiceCallOverlayCaller;
+    final currentMember = appState.currentMember;
+    final family = appState.family;
 
     return Scaffold(
       key: _scaffoldKey,
@@ -183,7 +188,187 @@ class _FamilyChatHomeState extends State<FamilyChatHome>
                   ),
                 ),
               ),
+            if (overlayRoom != null && family != null && currentMember != null)
+              Positioned.fill(
+                child: _IncomingVoiceCallOverlay(
+                  appState: appState,
+                  room: overlayRoom,
+                  caller: overlayCaller,
+                  roomLabel: roomTitle(
+                    overlayRoom,
+                    family,
+                    currentMember.id,
+                    family.members,
+                  ),
+                ),
+              ),
           ],
+        ),
+      ),
+    );
+  }
+}
+
+class _IncomingVoiceCallOverlay extends StatelessWidget {
+  const _IncomingVoiceCallOverlay({
+    required this.appState,
+    required this.room,
+    required this.caller,
+    required this.roomLabel,
+  });
+
+  final FamilyChatAppState appState;
+  final RoomRecord room;
+  final MemberRecord? caller;
+  final String roomLabel;
+
+  @override
+  Widget build(BuildContext context) {
+    final isIncoming = appState.isVoiceCallOverlayIncoming;
+    final isConnecting =
+        appState.isVoiceCallConnecting &&
+        appState.voiceCallOverlayRoom?.id == room.id;
+    final isJoined =
+        appState.isVoiceCallJoined &&
+        appState.voiceCallOverlayRoom?.id == room.id;
+    final callerName = caller?.name ?? roomLabel;
+    final theme = Theme.of(context);
+
+    return ColoredBox(
+      color: AppColors.plum.withValues(alpha: 0.18),
+      child: Center(
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: 420),
+          child: Padding(
+            padding: const EdgeInsets.all(20),
+            child: StitchedPanel(
+              color: AppColors.creamSoft,
+              padding: const EdgeInsets.all(24),
+              borderRadius: BorderRadius.circular(AppRadii.xl),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: <Widget>[
+                  Container(
+                    width: 78,
+                    height: 78,
+                    decoration: BoxDecoration(
+                      color: AppColors.pink.withValues(alpha: 0.42),
+                      borderRadius: BorderRadius.circular(AppRadii.pill),
+                    ),
+                    alignment: Alignment.center,
+                    child: const Icon(
+                      Icons.call_rounded,
+                      size: 36,
+                      color: AppColors.pinkDeep,
+                    ),
+                  ),
+                  const SizedBox(height: 18),
+                  Text(
+                    isIncoming
+                        ? 'Incoming voice call'
+                        : isJoined
+                        ? 'Voice call connected'
+                        : 'Joining voice call',
+                    textAlign: TextAlign.center,
+                    style: theme.textTheme.headlineSmall,
+                  ),
+                  const SizedBox(height: 10),
+                  AvatarBadge(
+                    name: callerName,
+                    avatarKey: caller?.avatarKey,
+                    avatarImageDataUrl: caller?.avatarImageDataUrl,
+                    size: 72,
+                  ),
+                  const SizedBox(height: 14),
+                  Text(
+                    callerName,
+                    textAlign: TextAlign.center,
+                    style: theme.textTheme.titleLarge,
+                  ),
+                  const SizedBox(height: 6),
+                  Text(
+                    roomLabel,
+                    textAlign: TextAlign.center,
+                    style: theme.textTheme.bodyLarge?.copyWith(
+                      color: AppColors.inkSoft,
+                    ),
+                  ),
+                  if (appState.activeRoomVoiceCallError?.isNotEmpty ==
+                      true) ...<Widget>[
+                    const SizedBox(height: 14),
+                    Text(
+                      appState.activeRoomVoiceCallError!,
+                      textAlign: TextAlign.center,
+                      style: theme.textTheme.bodyMedium?.copyWith(
+                        color: AppColors.pinkDeep,
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                  ],
+                  const SizedBox(height: 22),
+                  if (isIncoming)
+                    Row(
+                      children: <Widget>[
+                        Expanded(
+                          child: OutlinedButton.icon(
+                            onPressed: appState.dismissIncomingVoiceCallPrompt,
+                            icon: const Icon(Icons.close_rounded),
+                            label: const Text('Dismiss'),
+                          ),
+                        ),
+                        const SizedBox(width: 10),
+                        Expanded(
+                          child: FilledButton.icon(
+                            onPressed: appState.acceptIncomingVoiceCall,
+                            style: FilledButton.styleFrom(
+                              backgroundColor: AppColors.pinkDeep,
+                              foregroundColor: Colors.white,
+                            ),
+                            icon: const Icon(Icons.call_rounded),
+                            label: const Text('Answer'),
+                          ),
+                        ),
+                      ],
+                    )
+                  else
+                    Wrap(
+                      alignment: WrapAlignment.center,
+                      spacing: 10,
+                      runSpacing: 10,
+                      children: <Widget>[
+                        FilledButton.tonalIcon(
+                          onPressed: isConnecting
+                              ? null
+                              : appState.toggleVoiceMute,
+                          icon: Icon(
+                            appState.isVoiceCallMuted
+                                ? Icons.mic_off_rounded
+                                : Icons.mic_rounded,
+                          ),
+                          label: Text(
+                            appState.isVoiceCallMuted ? 'Unmute' : 'Mute',
+                          ),
+                        ),
+                        FilledButton.tonalIcon(
+                          onPressed: appState.leaveVoiceCall,
+                          icon: const Icon(Icons.logout_rounded),
+                          label: const Text('Leave'),
+                        ),
+                        FilledButton.icon(
+                          onPressed: appState.endActiveRoomVoiceCall,
+                          style: FilledButton.styleFrom(
+                            backgroundColor: AppColors.pinkDeep,
+                            foregroundColor: Colors.white,
+                          ),
+                          icon: const Icon(Icons.call_end_rounded),
+                          label: const Text('End'),
+                        ),
+                      ],
+                    ),
+                ],
+              ),
+            ),
+          ),
         ),
       ),
     );

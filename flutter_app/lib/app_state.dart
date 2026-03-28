@@ -77,6 +77,9 @@ class FamilyChatAppState extends ChangeNotifier {
   String? _voiceCallAppId;
   int? _voiceCallUid;
   final Set<int> _voiceCallRemoteUids = <int>{};
+  String? _dismissedIncomingVoiceCallKey;
+  String? _acceptedVoiceCallOverlayKey;
+  bool _isAcceptingIncomingVoiceCall = false;
   BrowserPushSetupResult? pendingPushHelp;
   PushNavigationIntent? _pendingPushNavigation =
       getPendingPushNavigationIntent();
@@ -176,6 +179,98 @@ class FamilyChatAppState extends ChangeNotifier {
 
   int get activeRoomVoiceParticipantCount =>
       (isActiveRoomVoiceCallJoined ? 1 : 0) + _voiceCallRemoteUids.length;
+
+  RoomRecord? get incomingVoiceCallRoom {
+    final snapshot = family;
+    final member = currentMember;
+    if (snapshot == null || member == null) {
+      return null;
+    }
+
+    final candidates =
+        snapshot.rooms
+            .where(
+              (room) =>
+                  room.voiceCallActive &&
+                  room.voiceChannelName != null &&
+                  room.voiceChannelName!.isNotEmpty &&
+                  room.voiceCallStartedBy != null &&
+                  room.voiceCallStartedBy != member.id &&
+                  (_voiceCallRoomId != room.id ||
+                      (!isVoiceCallJoined && !isVoiceCallConnecting)),
+            )
+            .toList()
+          ..sort((left, right) {
+            final leftStamp = left.voiceCallStartedAt ?? left.createdAt;
+            final rightStamp = right.voiceCallStartedAt ?? right.createdAt;
+            return rightStamp.compareTo(leftStamp);
+          });
+
+    for (final room in candidates) {
+      if (_dismissedIncomingVoiceCallKey == _voiceCallSessionKey(room)) {
+        continue;
+      }
+      return room;
+    }
+    return null;
+  }
+
+  MemberRecord? get incomingVoiceCallCaller {
+    final snapshot = family;
+    final room = incomingVoiceCallRoom;
+    final callerId = room?.voiceCallStartedBy;
+    if (snapshot == null || callerId == null) {
+      return null;
+    }
+    return snapshot.members
+        .where((member) => member.id == callerId)
+        .firstOrNull;
+  }
+
+  RoomRecord? get voiceCallOverlayRoom {
+    final incoming = incomingVoiceCallRoom;
+    if (incoming != null) {
+      return incoming;
+    }
+
+    final snapshot = family;
+    final acceptedKey = _acceptedVoiceCallOverlayKey;
+    if (snapshot == null || acceptedKey == null) {
+      return null;
+    }
+
+    final room = snapshot.rooms
+        .where((item) => _voiceCallSessionKey(item) == acceptedKey)
+        .firstOrNull;
+    if (room == null || !room.voiceCallActive) {
+      return null;
+    }
+
+    final selectedForJoin =
+        _isAcceptingIncomingVoiceCall && session?.activeRoomId == room.id;
+    final activelyJoiningRoom =
+        _voiceCallRoomId == room.id &&
+        (isVoiceCallJoined || isVoiceCallConnecting);
+    return selectedForJoin || activelyJoiningRoom ? room : null;
+  }
+
+  MemberRecord? get voiceCallOverlayCaller {
+    final snapshot = family;
+    final room = voiceCallOverlayRoom;
+    final callerId = room?.voiceCallStartedBy;
+    if (snapshot == null || callerId == null) {
+      return null;
+    }
+    return snapshot.members
+        .where((member) => member.id == callerId)
+        .firstOrNull;
+  }
+
+  bool get hasIncomingVoiceCall => incomingVoiceCallRoom != null;
+
+  bool get isVoiceCallOverlayIncoming =>
+      voiceCallOverlayRoom != null &&
+      incomingVoiceCallRoom?.id == voiceCallOverlayRoom?.id;
 
   void clearToast() {
     toastMessage = null;
@@ -285,6 +380,7 @@ class FamilyChatAppState extends ChangeNotifier {
         ],
         settings: snapshot.settings,
       );
+      _syncVoiceCallOverlayState();
       session = current.copyWith(activeRoomId: resolvedRoom);
       _syncCurrentProfileFromSnapshot();
       await _persistLocalState();
@@ -806,6 +902,37 @@ class FamilyChatAppState extends ChangeNotifier {
     _setToast('Voice call ended.');
   }
 
+  Future<void> acceptIncomingVoiceCall() async {
+    final room = incomingVoiceCallRoom;
+    if (room == null) {
+      return;
+    }
+
+    final sessionKey = _voiceCallSessionKey(room);
+    _dismissedIncomingVoiceCallKey = sessionKey;
+    _acceptedVoiceCallOverlayKey = sessionKey;
+    _isAcceptingIncomingVoiceCall = true;
+    notifyListeners();
+    try {
+      await selectRoom(room.id);
+      await startOrJoinVoiceCall();
+    } finally {
+      _isAcceptingIncomingVoiceCall = false;
+      notifyListeners();
+    }
+  }
+
+  void dismissIncomingVoiceCallPrompt() {
+    final room = incomingVoiceCallRoom;
+    if (room == null) {
+      return;
+    }
+
+    _dismissedIncomingVoiceCallKey = _voiceCallSessionKey(room);
+    _acceptedVoiceCallOverlayKey = null;
+    notifyListeners();
+  }
+
   Future<void> retryVoiceAudioPlayback() async {
     isVoiceCallAutoplayBlocked = false;
     notifyListeners();
@@ -983,6 +1110,9 @@ class FamilyChatAppState extends ChangeNotifier {
     profileDraftName = null;
     profileDraftAvatarKey = null;
     profileDraftAvatarImageDataUrl = null;
+    _dismissedIncomingVoiceCallKey = null;
+    _acceptedVoiceCallOverlayKey = null;
+    _isAcceptingIncomingVoiceCall = false;
   }
 
   void setComposerActive(bool _) {
@@ -2136,6 +2266,39 @@ class FamilyChatAppState extends ChangeNotifier {
     return true;
   }
 
+  String? _voiceCallSessionKey(RoomRecord? room) {
+    if (room == null || !room.voiceCallActive) {
+      return null;
+    }
+    final startedAt = room.voiceCallStartedAt?.toIso8601String() ?? '';
+    final channelName = room.voiceChannelName ?? '';
+    return '${room.id}|$channelName|$startedAt';
+  }
+
+  void _syncVoiceCallOverlayState() {
+    final snapshot = family;
+    if (snapshot == null) {
+      _dismissedIncomingVoiceCallKey = null;
+      _acceptedVoiceCallOverlayKey = null;
+      return;
+    }
+
+    final activeSessionKeys = snapshot.rooms
+        .where((room) => room.voiceCallActive)
+        .map(_voiceCallSessionKey)
+        .whereType<String>()
+        .toSet();
+
+    if (_dismissedIncomingVoiceCallKey != null &&
+        !activeSessionKeys.contains(_dismissedIncomingVoiceCallKey)) {
+      _dismissedIncomingVoiceCallKey = null;
+    }
+    if (_acceptedVoiceCallOverlayKey != null &&
+        !activeSessionKeys.contains(_acceptedVoiceCallOverlayKey)) {
+      _acceptedVoiceCallOverlayKey = null;
+    }
+  }
+
   void _replaceFamilyRooms(FamilySnapshot snapshot, List<RoomRecord> rooms) {
     family = FamilySnapshot(
       id: snapshot.id,
@@ -2147,6 +2310,7 @@ class FamilyChatAppState extends ChangeNotifier {
       messages: snapshot.messages,
       settings: snapshot.settings,
     );
+    _syncVoiceCallOverlayState();
     notifyListeners();
   }
 
