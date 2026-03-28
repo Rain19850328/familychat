@@ -233,6 +233,7 @@ class _IncomingVoiceCallOverlay extends StatelessWidget {
         appState.isVoiceCallJoined &&
         appState.voiceCallOverlayRoom?.id == room.id;
     final callerName = caller?.name ?? roomLabel;
+    final overlayName = isIncoming ? callerName : roomLabel;
     final theme = Theme.of(context);
 
     return ColoredBox(
@@ -268,23 +269,25 @@ class _IncomingVoiceCallOverlay extends StatelessWidget {
                     isIncoming
                         ? '$callerName님에게 전화가 왔어요'
                         : isAwaitingAnswer
-                        ? '$callerName님이 받는 중이에요'
+                        ? '$overlayName님에게 전화 거는 중이에요'
                         : isJoined
-                        ? '음성 통화가 연결되었어요'
+                        ? '$overlayName님과 통화 중이에요'
                         : '음성 통화에 연결하고 있어요',
                     textAlign: TextAlign.center,
                     style: theme.textTheme.headlineSmall,
                   ),
                   const SizedBox(height: 10),
                   AvatarBadge(
-                    name: callerName,
-                    avatarKey: caller?.avatarKey,
-                    avatarImageDataUrl: caller?.avatarImageDataUrl,
+                    name: overlayName,
+                    avatarKey: isIncoming ? caller?.avatarKey : null,
+                    avatarImageDataUrl: isIncoming
+                        ? caller?.avatarImageDataUrl
+                        : null,
                     size: 72,
                   ),
                   const SizedBox(height: 14),
                   Text(
-                    callerName,
+                    overlayName,
                     textAlign: TextAlign.center,
                     style: theme.textTheme.titleLarge,
                   ),

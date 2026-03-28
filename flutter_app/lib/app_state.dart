@@ -291,7 +291,9 @@ class FamilyChatAppState extends ChangeNotifier {
       incomingVoiceCallRoom?.id == voiceCallOverlayRoom?.id;
 
   bool get isAwaitingVoiceCallAnswer {
-    return _desiredVoiceLoopTone() == _VoiceLoopTone.outgoing &&
+    return _isCurrentVoiceCallOutbound &&
+        _voiceCallRoomId != null &&
+        _voiceCallRemoteUids.isEmpty &&
         (isVoiceCallConnecting || isVoiceCallJoined);
   }
 
@@ -1742,7 +1744,6 @@ class FamilyChatAppState extends ChangeNotifier {
     isVoiceCallAutoplayBlocked = false;
     _isCurrentVoiceCallOutbound = false;
     _hasVoiceCallEverConnected = false;
-    _currentVoiceLoopTone = _VoiceLoopTone.none;
     _voiceCallRoomId = null;
     _voiceCallChannelName = null;
     _voiceCallUid = null;
