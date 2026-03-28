@@ -1,7 +1,7 @@
 name: familychat_flutter
 description: "Closed family chat rebuilt with Flutter Web."
 publish_to: 'none'
-version: 1.2.1+26
+version: 1.2.2+27
 
 environment:
   sdk: ^3.11.3

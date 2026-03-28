@@ -5,6 +5,7 @@ import 'package:agora_rtc_engine/agora_rtc_engine.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/widgets.dart';
+import 'package:just_audio/just_audio.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
@@ -54,6 +55,8 @@ class FamilyChatAppState extends ChangeNotifier {
 
   RealtimeChannel? _familyChannel;
   RtcEngine? _rtcEngine;
+  AudioPlayer? _voiceLoopPlayer;
+  AudioPlayer? _voiceCuePlayer;
   Timer? _presenceTimer;
   Timer? _refreshTimer;
   Timer? _refreshDebounceTimer;
@@ -80,6 +83,9 @@ class FamilyChatAppState extends ChangeNotifier {
   String? _dismissedIncomingVoiceCallKey;
   String? _acceptedVoiceCallOverlayKey;
   bool _isAcceptingIncomingVoiceCall = false;
+  bool _isCurrentVoiceCallOutbound = false;
+  bool _hasVoiceCallEverConnected = false;
+  _VoiceLoopTone _currentVoiceLoopTone = _VoiceLoopTone.none;
   BrowserPushSetupResult? pendingPushHelp;
   PushNavigationIntent? _pendingPushNavigation =
       getPendingPushNavigationIntent();
@@ -381,6 +387,7 @@ class FamilyChatAppState extends ChangeNotifier {
         settings: snapshot.settings,
       );
       _syncVoiceCallOverlayState();
+      unawaited(_syncVoiceCallSoundState());
       session = current.copyWith(activeRoomId: resolvedRoom);
       _syncCurrentProfileFromSnapshot();
       await _persistLocalState();
@@ -834,6 +841,9 @@ class FamilyChatAppState extends ChangeNotifier {
           ),
         );
       }
+      _isCurrentVoiceCallOutbound = startedHere;
+      _hasVoiceCallEverConnected = false;
+      unawaited(_syncVoiceCallSoundState());
 
       if (channelName.isEmpty) {
         throw StateError('Voice channel is not configured.');
@@ -846,6 +856,8 @@ class FamilyChatAppState extends ChangeNotifier {
         channelName: channelName,
       );
     } catch (error) {
+      _isCurrentVoiceCallOutbound = false;
+      unawaited(_syncVoiceCallSoundState());
       voiceCallError = _friendlyError(
         error,
         fallback: 'Voice call could not be started.',
@@ -867,12 +879,18 @@ class FamilyChatAppState extends ChangeNotifier {
   }
 
   Future<void> leaveVoiceCall() async {
+    final shouldPlayDisconnectTone =
+        isVoiceCallJoined || isVoiceCallConnecting || _voiceCallRoomId != null;
     try {
       await _rtcEngine?.leaveChannel();
     } catch (_) {
       // Ignore leave failures.
     }
     _resetVoiceCallState(clearError: false);
+    if (shouldPlayDisconnectTone) {
+      unawaited(_playVoiceCue(_VoiceCue.disconnect));
+    }
+    unawaited(_syncVoiceCallSoundState());
     notifyListeners();
   }
 
@@ -912,12 +930,14 @@ class FamilyChatAppState extends ChangeNotifier {
     _dismissedIncomingVoiceCallKey = sessionKey;
     _acceptedVoiceCallOverlayKey = sessionKey;
     _isAcceptingIncomingVoiceCall = true;
+    unawaited(_syncVoiceCallSoundState());
     notifyListeners();
     try {
       await selectRoom(room.id);
       await startOrJoinVoiceCall();
     } finally {
       _isAcceptingIncomingVoiceCall = false;
+      unawaited(_syncVoiceCallSoundState());
       notifyListeners();
     }
   }
@@ -930,11 +950,13 @@ class FamilyChatAppState extends ChangeNotifier {
 
     _dismissedIncomingVoiceCallKey = _voiceCallSessionKey(room);
     _acceptedVoiceCallOverlayKey = null;
+    unawaited(_syncVoiceCallSoundState());
     notifyListeners();
   }
 
   Future<void> retryVoiceAudioPlayback() async {
     isVoiceCallAutoplayBlocked = false;
+    unawaited(_syncVoiceCallSoundState(forceRestart: true));
     notifyListeners();
   }
 
@@ -1113,6 +1135,10 @@ class FamilyChatAppState extends ChangeNotifier {
     _dismissedIncomingVoiceCallKey = null;
     _acceptedVoiceCallOverlayKey = null;
     _isAcceptingIncomingVoiceCall = false;
+    _isCurrentVoiceCallOutbound = false;
+    _hasVoiceCallEverConnected = false;
+    _currentVoiceLoopTone = _VoiceLoopTone.none;
+    unawaited(_stopVoiceLoopTone());
   }
 
   void setComposerActive(bool _) {
@@ -1303,6 +1329,7 @@ class FamilyChatAppState extends ChangeNotifier {
           (isVoiceCallJoined || isVoiceCallConnecting)) {
         unawaited(leaveVoiceCall());
       }
+      unawaited(_syncVoiceCallSoundState());
     }
     return changed;
   }
@@ -1472,6 +1499,7 @@ class FamilyChatAppState extends ChangeNotifier {
               'elapsedMs': elapsed,
             },
           );
+          unawaited(_syncVoiceCallSoundState());
           notifyListeners();
         },
         onLeaveChannel: (RtcConnection connection, RtcStats stats) {
@@ -1480,9 +1508,16 @@ class FamilyChatAppState extends ChangeNotifier {
             roomId: _voiceCallRoomId,
             details: <String, Object?>{'duration': stats.duration},
           );
+          unawaited(_syncVoiceCallSoundState());
         },
         onUserJoined: (RtcConnection connection, int remoteUid, int elapsed) {
+          final hadRemoteParticipants = _voiceCallRemoteUids.isNotEmpty;
           _voiceCallRemoteUids.add(remoteUid);
+          _hasVoiceCallEverConnected = true;
+          if (!hadRemoteParticipants) {
+            unawaited(_playVoiceCue(_VoiceCue.connected));
+          }
+          unawaited(_syncVoiceCallSoundState());
           notifyListeners();
         },
         onUserOffline:
@@ -1492,6 +1527,7 @@ class FamilyChatAppState extends ChangeNotifier {
               UserOfflineReasonType reason,
             ) {
               _voiceCallRemoteUids.remove(remoteUid);
+              unawaited(_syncVoiceCallSoundState());
               notifyListeners();
             },
         onTokenPrivilegeWillExpire: (RtcConnection connection, String token) {
@@ -1513,6 +1549,7 @@ class FamilyChatAppState extends ChangeNotifier {
             roomId: _voiceCallRoomId,
             details: <String, Object?>{'code': err.toString(), 'message': msg},
           );
+          unawaited(_syncVoiceCallSoundState());
           notifyListeners();
         },
       ),
@@ -1561,11 +1598,135 @@ class FamilyChatAppState extends ChangeNotifier {
     }
   }
 
+  Future<void> _syncVoiceCallSoundState({bool forceRestart = false}) async {
+    final desiredTone = _desiredVoiceLoopTone();
+    if (!forceRestart && desiredTone == _currentVoiceLoopTone) {
+      return;
+    }
+
+    _currentVoiceLoopTone = desiredTone;
+    if (desiredTone == _VoiceLoopTone.none) {
+      await _stopVoiceLoopTone();
+      return;
+    }
+
+    await _playVoiceLoopTone(desiredTone);
+  }
+
+  _VoiceLoopTone _desiredVoiceLoopTone() {
+    if (incomingVoiceCallRoom != null) {
+      return _VoiceLoopTone.incoming;
+    }
+    final isAwaitingAnswer =
+        _isCurrentVoiceCallOutbound &&
+        !_hasVoiceCallEverConnected &&
+        _voiceCallRoomId != null &&
+        (isVoiceCallConnecting || isVoiceCallJoined) &&
+        _voiceCallRemoteUids.isEmpty;
+    return isAwaitingAnswer ? _VoiceLoopTone.outgoing : _VoiceLoopTone.none;
+  }
+
+  Future<void> _ensureVoiceTonePlayers() async {
+    _voiceLoopPlayer ??= AudioPlayer();
+    _voiceCuePlayer ??= AudioPlayer();
+  }
+
+  Future<void> _playVoiceLoopTone(_VoiceLoopTone tone) async {
+    await _ensureVoiceTonePlayers();
+    final player = _voiceLoopPlayer!;
+    final wavBytes = switch (tone) {
+      _VoiceLoopTone.incoming => _buildIncomingVoiceToneWav(),
+      _VoiceLoopTone.outgoing => _buildOutgoingVoiceToneWav(),
+      _VoiceLoopTone.none => Uint8List(0),
+    };
+    if (wavBytes.isEmpty) {
+      await _stopVoiceLoopTone();
+      return;
+    }
+    try {
+      await player.setLoopMode(LoopMode.one);
+      await player.setAudioSource(MemoryAudioSource(wavBytes));
+      await player.play();
+      isVoiceCallAutoplayBlocked = false;
+    } catch (_) {
+      isVoiceCallAutoplayBlocked = true;
+      notifyListeners();
+    }
+  }
+
+  Future<void> _stopVoiceLoopTone() async {
+    final player = _voiceLoopPlayer;
+    if (player == null) {
+      return;
+    }
+    try {
+      await player.stop();
+    } catch (_) {
+      // Ignore tone stop failures.
+    }
+  }
+
+  Future<void> _playVoiceCue(_VoiceCue cue) async {
+    await _ensureVoiceTonePlayers();
+    final player = _voiceCuePlayer!;
+    final wavBytes = switch (cue) {
+      _VoiceCue.connected => _buildConnectedVoiceToneWav(),
+      _VoiceCue.disconnect => _buildDisconnectedVoiceToneWav(),
+    };
+    try {
+      await player.stop();
+      await player.setLoopMode(LoopMode.off);
+      await player.setAudioSource(MemoryAudioSource(wavBytes));
+      await player.play();
+      isVoiceCallAutoplayBlocked = false;
+    } catch (_) {
+      isVoiceCallAutoplayBlocked = true;
+      notifyListeners();
+    }
+  }
+
+  Uint8List _buildIncomingVoiceToneWav() {
+    return synthesizeToneSequenceWav(const <ToneStep>[
+      ToneStep(880, 280, volume: 0.26),
+      ToneStep(null, 80),
+      ToneStep(1046.5, 280, volume: 0.24),
+      ToneStep(null, 520),
+    ]);
+  }
+
+  Uint8List _buildOutgoingVoiceToneWav() {
+    return synthesizeToneSequenceWav(const <ToneStep>[
+      ToneStep(440, 380, volume: 0.24),
+      ToneStep(null, 180),
+      ToneStep(440, 380, volume: 0.24),
+      ToneStep(null, 780),
+    ]);
+  }
+
+  Uint8List _buildConnectedVoiceToneWav() {
+    return synthesizeToneSequenceWav(const <ToneStep>[
+      ToneStep(659.3, 120, volume: 0.24),
+      ToneStep(null, 40),
+      ToneStep(880, 180, volume: 0.26),
+    ]);
+  }
+
+  Uint8List _buildDisconnectedVoiceToneWav() {
+    return synthesizeToneSequenceWav(const <ToneStep>[
+      ToneStep(784, 110, volume: 0.22),
+      ToneStep(null, 40),
+      ToneStep(523.3, 180, volume: 0.24),
+    ]);
+  }
+
   void _resetVoiceCallState({required bool clearError}) {
     isVoiceCallConnecting = false;
     isVoiceCallJoined = false;
     isVoiceCallMuted = false;
     isVoiceCallAutoplayBlocked = false;
+    _isCurrentVoiceCallOutbound = false;
+    _hasVoiceCallEverConnected = false;
+    _currentVoiceLoopTone = _VoiceLoopTone.none;
     _voiceCallRoomId = null;
     _voiceCallChannelName = null;
     _voiceCallUid = null;
@@ -2311,6 +2472,7 @@ class FamilyChatAppState extends ChangeNotifier {
       settings: snapshot.settings,
     );
     _syncVoiceCallOverlayState();
+    unawaited(_syncVoiceCallSoundState());
     notifyListeners();
   }
 
@@ -2490,6 +2652,8 @@ class FamilyChatAppState extends ChangeNotifier {
     _presenceTimer?.cancel();
     _refreshTimer?.cancel();
     _refreshDebounceTimer?.cancel();
+    unawaited(_voiceLoopPlayer?.dispose() ?? Future<void>.value());
+    unawaited(_voiceCuePlayer?.dispose() ?? Future<void>.value());
     unawaited(_rtcEngine?.release() ?? Future<void>.value());
     super.dispose();
   }
@@ -2536,3 +2700,7 @@ class _VoiceCallTokenPayload {
   final String token;
   final int uid;
 }
+
+enum _VoiceLoopTone { none, incoming, outgoing }
+
+enum _VoiceCue { connected, disconnect }

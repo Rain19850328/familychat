@@ -2,6 +2,7 @@
 
 import 'dart:async';
 import 'dart:convert';
+import 'dart:math' as math;
 import 'dart:typed_data';
 
 import 'package:just_audio/just_audio.dart';
@@ -10,6 +11,14 @@ const int kVoiceSampleRate = 16000;
 const int kVoiceChannels = 1;
 const int kVoiceBitsPerSample = 16;
 const int kVoiceMessageMaxDurationMs = 30000;
+
+class ToneStep {
+  const ToneStep(this.frequencyHz, this.durationMs, {this.volume = 0.28});
+
+  final double? frequencyHz;
+  final int durationMs;
+  final double volume;
+}
 
 Uint8List encodePcm16Wav(
   Uint8List pcmBytes, {
@@ -81,6 +90,31 @@ int estimatePcm16DurationMs(
     return 0;
   }
   return ((pcmBytes.length / bytesPerSecond) * 1000).round();
+}
+
+Uint8List synthesizeToneSequenceWav(
+  List<ToneStep> steps, {
+  int sampleRate = kVoiceSampleRate,
+}) {
+  final pcm = BytesBuilder(copy: false);
+  for (final step in steps) {
+    final sampleCount = (sampleRate * step.durationMs / 1000).round();
+    for (var i = 0; i < sampleCount; i++) {
+      final sample = step.frequencyHz == null
+          ? 0.0
+          : math.sin(2 * math.pi * step.frequencyHz! * i / sampleRate) *
+                step.volume;
+      final value = (sample * 32767).round().clamp(-32768, 32767);
+      final data = ByteData(2)..setInt16(0, value, Endian.little);
+      pcm.add(data.buffer.asUint8List());
+    }
+  }
+  return encodePcm16Wav(
+    pcm.toBytes(),
+    sampleRate: sampleRate,
+    channels: 1,
+    bitsPerSample: kVoiceBitsPerSample,
+  );
 }
 
 class MemoryAudioSource extends StreamAudioSource {
