@@ -271,13 +271,28 @@ class Sidebar extends StatelessWidget {
           ),
           if (target.id != current.id)
             IconButton.filledTonal(
-              tooltip: 'DM',
+              tooltip: '대화',
               onPressed: () async {
                 await appState.openDirectMessage(target);
                 onClose?.call();
               },
               icon: const Icon(Icons.forum_rounded),
             ),
+          if (target.id != current.id) ...<Widget>[
+            const SizedBox(width: 8),
+            IconButton.filledTonal(
+              tooltip: '전화',
+              onPressed: () async {
+                await appState.startDirectVoiceCall(target);
+                onClose?.call();
+              },
+              style: IconButton.styleFrom(
+                backgroundColor: AppColors.sky,
+                foregroundColor: AppColors.plum,
+              ),
+              icon: const Icon(Icons.call_rounded),
+            ),
+          ],
           if (removable)
             IconButton(
               tooltip: '탈퇴 처리',

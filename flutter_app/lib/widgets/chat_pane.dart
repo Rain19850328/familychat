@@ -429,10 +429,10 @@ class _ChatHeader extends StatelessWidget {
                 : Icons.add_call,
           ),
           tooltip: isVoiceCallJoined
-              ? 'In voice call'
+              ? '통화 중'
               : isVoiceCallActive
-              ? 'Join voice call'
-              : 'Start voice call',
+              ? '통화 참여'
+              : '통화 시작',
         ),
         if (isVoiceCallJoined) ...<Widget>[
           const SizedBox(width: 8),
@@ -447,7 +447,7 @@ class _ChatHeader extends StatelessWidget {
             icon: Icon(
               isVoiceCallMuted ? Icons.mic_off_rounded : Icons.mic_rounded,
             ),
-            tooltip: isVoiceCallMuted ? 'Unmute microphone' : 'Mute microphone',
+            tooltip: isVoiceCallMuted ? '마이크 켜기' : '마이크 끄기',
           ),
           const SizedBox(width: 8),
           IconButton.filledTonal(
@@ -457,7 +457,7 @@ class _ChatHeader extends StatelessWidget {
               foregroundColor: AppColors.plum,
             ),
             icon: const Icon(Icons.logout_rounded),
-            tooltip: 'Leave voice call',
+            tooltip: '통화 나가기',
           ),
           const SizedBox(width: 8),
           IconButton.filled(
@@ -467,7 +467,7 @@ class _ChatHeader extends StatelessWidget {
               foregroundColor: Colors.white,
             ),
             icon: const Icon(Icons.call_end_rounded),
-            tooltip: 'End voice call',
+            tooltip: '통화 종료',
           ),
           const SizedBox(width: 8),
         ],
@@ -511,12 +511,12 @@ class _VoiceCallBanner extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final statusText = isConnecting
-        ? 'Connecting voice call...'
+        ? '음성 통화 연결 중...'
         : isJoined
-        ? 'Voice call connected'
+        ? '음성 통화 연결됨'
         : isActive
-        ? 'Voice call in progress'
-        : 'Voice call unavailable';
+        ? '음성 통화 진행 중'
+        : '음성 통화를 사용할 수 없어요';
 
     return StitchedPanel(
       color: AppColors.paper,
@@ -551,8 +551,8 @@ class _VoiceCallBanner extends StatelessWidget {
                   errorText?.isNotEmpty == true
                       ? errorText!
                       : participantCount > 0
-                      ? 'Participants: $participantCount'
-                      : 'Tap the call button to join the room voice call.',
+                      ? '참여 인원 $participantCount명'
+                      : '통화 버튼을 눌러 음성 통화에 참여하세요.',
                   style: Theme.of(context).textTheme.bodyMedium,
                 ),
               ],
@@ -562,7 +562,7 @@ class _VoiceCallBanner extends StatelessWidget {
             FilledButton.tonalIcon(
               onPressed: onRetryAudio,
               icon: const Icon(Icons.volume_up_rounded),
-              label: const Text('Enable audio'),
+              label: const Text('오디오 켜기'),
             ),
         ],
       ),

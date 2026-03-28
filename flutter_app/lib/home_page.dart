@@ -265,10 +265,10 @@ class _IncomingVoiceCallOverlay extends StatelessWidget {
                   const SizedBox(height: 18),
                   Text(
                     isIncoming
-                        ? 'Incoming voice call'
+                        ? '$callerName님에게 전화가 왔어요'
                         : isJoined
-                        ? 'Voice call connected'
-                        : 'Joining voice call',
+                        ? '음성 통화가 연결되었어요'
+                        : '음성 통화에 연결하고 있어요',
                     textAlign: TextAlign.center,
                     style: theme.textTheme.headlineSmall,
                   ),
@@ -313,7 +313,7 @@ class _IncomingVoiceCallOverlay extends StatelessWidget {
                           child: OutlinedButton.icon(
                             onPressed: appState.dismissIncomingVoiceCallPrompt,
                             icon: const Icon(Icons.close_rounded),
-                            label: const Text('Dismiss'),
+                            label: const Text('닫기'),
                           ),
                         ),
                         const SizedBox(width: 10),
@@ -325,7 +325,7 @@ class _IncomingVoiceCallOverlay extends StatelessWidget {
                               foregroundColor: Colors.white,
                             ),
                             icon: const Icon(Icons.call_rounded),
-                            label: const Text('Answer'),
+                            label: const Text('받기'),
                           ),
                         ),
                       ],
@@ -346,13 +346,13 @@ class _IncomingVoiceCallOverlay extends StatelessWidget {
                                 : Icons.mic_rounded,
                           ),
                           label: Text(
-                            appState.isVoiceCallMuted ? 'Unmute' : 'Mute',
+                            appState.isVoiceCallMuted ? '마이크 켜기' : '마이크 끄기',
                           ),
                         ),
                         FilledButton.tonalIcon(
                           onPressed: appState.leaveVoiceCall,
                           icon: const Icon(Icons.logout_rounded),
-                          label: const Text('Leave'),
+                          label: const Text('나가기'),
                         ),
                         FilledButton.icon(
                           onPressed: appState.endActiveRoomVoiceCall,
@@ -361,7 +361,7 @@ class _IncomingVoiceCallOverlay extends StatelessWidget {
                             foregroundColor: Colors.white,
                           ),
                           icon: const Icon(Icons.call_end_rounded),
-                          label: const Text('End'),
+                          label: const Text('종료'),
                         ),
                       ],
                     ),

@@ -482,6 +482,11 @@ class FamilyChatAppState extends ChangeNotifier {
     });
   }
 
+  Future<void> startDirectVoiceCall(MemberRecord target) async {
+    await openDirectMessage(target);
+    await startOrJoinVoiceCall();
+  }
+
   Future<bool> sendMessage(String rawText, {DateTime? initiatedAt}) async {
     final snapshot = family;
     final member = currentMember;
@@ -858,10 +863,7 @@ class FamilyChatAppState extends ChangeNotifier {
     } catch (error) {
       _isCurrentVoiceCallOutbound = false;
       unawaited(_syncVoiceCallSoundState());
-      voiceCallError = _friendlyError(
-        error,
-        fallback: 'Voice call could not be started.',
-      );
+      voiceCallError = _friendlyError(error, fallback: '음성 통화를 시작하지 못했습니다.');
       notifyListeners();
       _setToast(voiceCallError!);
     }
@@ -917,7 +919,7 @@ class FamilyChatAppState extends ChangeNotifier {
         clearVoiceCallStartedBy: true,
       ),
     );
-    _setToast('Voice call ended.');
+    _setToast('음성 통화를 종료했습니다.');
   }
 
   Future<void> acceptIncomingVoiceCall() async {
@@ -1437,10 +1439,7 @@ class FamilyChatAppState extends ChangeNotifier {
       );
     } catch (error) {
       _resetVoiceCallState(clearError: true);
-      voiceCallError = _friendlyError(
-        error,
-        fallback: 'Voice call could not be joined.',
-      );
+      voiceCallError = _friendlyError(error, fallback: '음성 통화에 연결하지 못했습니다.');
       rethrow;
     }
   }
@@ -1542,7 +1541,7 @@ class FamilyChatAppState extends ChangeNotifier {
             isVoiceCallAutoplayBlocked = true;
           }
           if (lower.contains('permission') || lower.contains('notallowed')) {
-            voiceCallError = 'Microphone permission was denied.';
+            voiceCallError = '마이크 권한이 거부되었습니다.';
           }
           _logChatTrace(
             'voice_error',
