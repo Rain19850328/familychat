@@ -225,6 +225,7 @@ class _IncomingVoiceCallOverlay extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final isIncoming = appState.isVoiceCallOverlayIncoming;
+    final isAwaitingAnswer = appState.isAwaitingVoiceCallAnswer;
     final isConnecting =
         appState.isVoiceCallConnecting &&
         appState.voiceCallOverlayRoom?.id == room.id;
@@ -266,6 +267,8 @@ class _IncomingVoiceCallOverlay extends StatelessWidget {
                   Text(
                     isIncoming
                         ? '$callerName님에게 전화가 왔어요'
+                        : isAwaitingAnswer
+                        ? '$callerName님이 받는 중이에요'
                         : isJoined
                         ? '음성 통화가 연결되었어요'
                         : '음성 통화에 연결하고 있어요',

@@ -274,16 +274,8 @@ class _ChatPaneState extends State<ChatPane> {
           child: _ChatHeader(
             title: roomTitle(room, family, member.id, family.members),
             isMuted: muted,
-            isVoiceCallActive: room.voiceCallActive,
-            isVoiceCallConnecting: appState.isActiveRoomVoiceCallConnecting,
-            isVoiceCallJoined: appState.isActiveRoomVoiceCallJoined,
-            isVoiceCallMuted: appState.isActiveRoomVoiceCallMuted,
             onOpenDrawer: widget.onOpenDrawer,
             onToggleMute: appState.toggleMute,
-            onStartOrJoinVoiceCall: appState.startOrJoinVoiceCall,
-            onToggleVoiceMute: appState.toggleVoiceMute,
-            onLeaveVoiceCall: appState.leaveVoiceCall,
-            onEndVoiceCall: appState.endActiveRoomVoiceCall,
           ),
         ),
         if (room.voiceCallActive ||
@@ -367,30 +359,14 @@ class _ChatHeader extends StatelessWidget {
   const _ChatHeader({
     required this.title,
     required this.isMuted,
-    required this.isVoiceCallActive,
-    required this.isVoiceCallConnecting,
-    required this.isVoiceCallJoined,
-    required this.isVoiceCallMuted,
     required this.onOpenDrawer,
     required this.onToggleMute,
-    required this.onStartOrJoinVoiceCall,
-    required this.onToggleVoiceMute,
-    required this.onLeaveVoiceCall,
-    required this.onEndVoiceCall,
   });
 
   final String title;
   final bool isMuted;
-  final bool isVoiceCallActive;
-  final bool isVoiceCallConnecting;
-  final bool isVoiceCallJoined;
-  final bool isVoiceCallMuted;
   final VoidCallback onOpenDrawer;
   final VoidCallback onToggleMute;
-  final VoidCallback onStartOrJoinVoiceCall;
-  final VoidCallback onToggleVoiceMute;
-  final VoidCallback onLeaveVoiceCall;
-  final VoidCallback onEndVoiceCall;
 
   @override
   Widget build(BuildContext context) {
@@ -411,66 +387,6 @@ class _ChatHeader extends StatelessWidget {
             ).textTheme.headlineMedium?.copyWith(fontSize: 30),
           ),
         ),
-        IconButton.filledTonal(
-          onPressed: isVoiceCallConnecting ? null : onStartOrJoinVoiceCall,
-          style: IconButton.styleFrom(
-            backgroundColor: isVoiceCallActive
-                ? AppColors.pinkDeep
-                : AppColors.sky,
-            foregroundColor: Colors.white,
-          ),
-          icon: Icon(
-            isVoiceCallConnecting
-                ? Icons.more_horiz_rounded
-                : isVoiceCallJoined
-                ? Icons.phone_in_talk_rounded
-                : isVoiceCallActive
-                ? Icons.call_rounded
-                : Icons.add_call,
-          ),
-          tooltip: isVoiceCallJoined
-              ? '통화 중'
-              : isVoiceCallActive
-              ? '통화 참여'
-              : '통화 시작',
-        ),
-        if (isVoiceCallJoined) ...<Widget>[
-          const SizedBox(width: 8),
-          IconButton.filledTonal(
-            onPressed: onToggleVoiceMute,
-            style: IconButton.styleFrom(
-              backgroundColor: isVoiceCallMuted
-                  ? AppColors.butter
-                  : AppColors.lavender,
-              foregroundColor: AppColors.plum,
-            ),
-            icon: Icon(
-              isVoiceCallMuted ? Icons.mic_off_rounded : Icons.mic_rounded,
-            ),
-            tooltip: isVoiceCallMuted ? '마이크 켜기' : '마이크 끄기',
-          ),
-          const SizedBox(width: 8),
-          IconButton.filledTonal(
-            onPressed: onLeaveVoiceCall,
-            style: IconButton.styleFrom(
-              backgroundColor: AppColors.paper,
-              foregroundColor: AppColors.plum,
-            ),
-            icon: const Icon(Icons.logout_rounded),
-            tooltip: '통화 나가기',
-          ),
-          const SizedBox(width: 8),
-          IconButton.filled(
-            onPressed: onEndVoiceCall,
-            style: IconButton.styleFrom(
-              backgroundColor: AppColors.pinkDeep,
-              foregroundColor: Colors.white,
-            ),
-            icon: const Icon(Icons.call_end_rounded),
-            tooltip: '통화 종료',
-          ),
-          const SizedBox(width: 8),
-        ],
         IconButton.filledTonal(
           onPressed: onToggleMute,
           style: IconButton.styleFrom(

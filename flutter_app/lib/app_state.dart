@@ -240,24 +240,36 @@ class FamilyChatAppState extends ChangeNotifier {
     }
 
     final snapshot = family;
-    final acceptedKey = _acceptedVoiceCallOverlayKey;
-    if (snapshot == null || acceptedKey == null) {
+    if (snapshot == null) {
       return null;
     }
 
-    final room = snapshot.rooms
+    final roomId = _voiceCallRoomId;
+    if (roomId != null && (isVoiceCallJoined || isVoiceCallConnecting)) {
+      final activeVoiceRoom = snapshot.rooms
+          .where((item) => item.id == roomId)
+          .firstOrNull;
+      if (activeVoiceRoom != null && activeVoiceRoom.voiceCallActive) {
+        return activeVoiceRoom;
+      }
+    }
+
+    final acceptedKey = _acceptedVoiceCallOverlayKey;
+    if (acceptedKey == null) {
+      return null;
+    }
+
+    final pendingAcceptedRoom = snapshot.rooms
         .where((item) => _voiceCallSessionKey(item) == acceptedKey)
         .firstOrNull;
-    if (room == null || !room.voiceCallActive) {
+    if (pendingAcceptedRoom == null || !pendingAcceptedRoom.voiceCallActive) {
       return null;
     }
 
     final selectedForJoin =
-        _isAcceptingIncomingVoiceCall && session?.activeRoomId == room.id;
-    final activelyJoiningRoom =
-        _voiceCallRoomId == room.id &&
-        (isVoiceCallJoined || isVoiceCallConnecting);
-    return selectedForJoin || activelyJoiningRoom ? room : null;
+        _isAcceptingIncomingVoiceCall &&
+        session?.activeRoomId == pendingAcceptedRoom.id;
+    return selectedForJoin ? pendingAcceptedRoom : null;
   }
 
   MemberRecord? get voiceCallOverlayCaller {
@@ -277,6 +289,11 @@ class FamilyChatAppState extends ChangeNotifier {
   bool get isVoiceCallOverlayIncoming =>
       voiceCallOverlayRoom != null &&
       incomingVoiceCallRoom?.id == voiceCallOverlayRoom?.id;
+
+  bool get isAwaitingVoiceCallAnswer {
+    return _desiredVoiceLoopTone() == _VoiceLoopTone.outgoing &&
+        (isVoiceCallConnecting || isVoiceCallJoined);
+  }
 
   void clearToast() {
     toastMessage = null;
