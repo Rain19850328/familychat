@@ -1,25 +1,40 @@
-# FamilyChat Flutter Web
+# FamilyChat Flutter App
 
-실제 배포되는 프런트엔드 앱입니다.
+This app currently ships as Flutter Web, and now also includes an Android runner.
 
-## 실행
+## Web
 
 ```powershell
 ..\flutter-sdk\bin\flutter.bat pub get
 ..\flutter-sdk\bin\flutter.bat run -d chrome
 ```
 
-## 빌드
-
 ```powershell
 ..\flutter-sdk\bin\flutter.bat build web --release
 ```
 
-## 배포 경로
+## Android
 
-GitHub Actions가 `flutter_app/build/web` 를 Cloudflare Pages로 배포합니다.
+The project now includes `flutter_app/android`.
 
-## Agora Voice Call
+Debug APK:
 
-- 웹 통화는 `agora_rtc_engine` 와 `iris-web-rtc` 스크립트를 사용합니다.
-- 실제 통화 연결에는 Supabase Edge Function `agora-token` 이 필요합니다.
+```powershell
+..\flutter-sdk\bin\flutter.bat build apk --debug
+```
+
+Release APK:
+
+```powershell
+..\flutter-sdk\bin\flutter.bat build apk --release
+```
+
+Notes:
+
+- Android SDK must be installed and configured with `ANDROID_HOME` or `ANDROID_SDK_ROOT`.
+- The Android package name is `com.rain19850328.familychat`.
+- Voice calling uses Agora and requires microphone permission on Android.
+
+## Deployment
+
+GitHub Actions deploys `flutter_app/build/web` to Cloudflare Pages.
