@@ -1502,6 +1502,7 @@ class FamilyChatAppState extends ChangeNotifier {
         channelProfile: ChannelProfileType.channelProfileCommunication,
       ),
     );
+    await _preferNativeCallEarpiece(engine);
     engine.registerEventHandler(
       RtcEngineEventHandler(
         onJoinChannelSuccess: (RtcConnection connection, int elapsed) {
@@ -1509,6 +1510,7 @@ class FamilyChatAppState extends ChangeNotifier {
           isVoiceCallJoined = true;
           isVoiceCallMuted = false;
           voiceCallError = null;
+          unawaited(_preferNativeCallEarpiece(engine));
           _logChatTrace(
             'voice_join_success',
             roomId: _voiceCallRoomId,
@@ -1576,6 +1578,22 @@ class FamilyChatAppState extends ChangeNotifier {
     await engine.disableVideo();
     await engine.setClientRole(role: ClientRoleType.clientRoleBroadcaster);
     _rtcEngine = engine;
+  }
+
+  Future<void> _preferNativeCallEarpiece(RtcEngine engine) async {
+    if (kIsWeb) {
+      return;
+    }
+    if (defaultTargetPlatform != TargetPlatform.android &&
+        defaultTargetPlatform != TargetPlatform.iOS) {
+      return;
+    }
+    try {
+      await engine.setDefaultAudioRouteToSpeakerphone(false);
+      await engine.setEnableSpeakerphone(false);
+    } catch (_) {
+      // Ignore native audio route changes on unsupported platforms.
+    }
   }
 
   Future<void> _renewVoiceCallToken({required String reason}) async {
