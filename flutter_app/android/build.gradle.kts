@@ -1,3 +1,5 @@
+import com.android.build.gradle.BaseExtension
+
 allprojects {
     repositories {
         google()
@@ -17,6 +19,19 @@ subprojects {
 }
 subprojects {
     project.evaluationDependsOn(":app")
+}
+
+subprojects {
+    plugins.withId("com.android.application") {
+        extensions.configure<BaseExtension>("android") {
+            ndkVersion = "30.0.14904198"
+        }
+    }
+    plugins.withId("com.android.library") {
+        extensions.configure<BaseExtension>("android") {
+            ndkVersion = "30.0.14904198"
+        }
+    }
 }
 
 tasks.register<Delete>("clean") {
